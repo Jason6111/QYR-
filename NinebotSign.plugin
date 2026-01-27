@@ -13,7 +13,7 @@
 capture = switch, "false", "true", tag=自动抓包开关, desc=开启后访问九号签到接口自动写入鉴权信息到BoxJs
 notify = switch, "true", "false", tag=通知开关, desc=是否推送签到结果通知
 titlePrefix = input, "九号签到助手", tag=自定义通知标题, desc=签到结果通知的标题前缀
-cron_time = input, "30 7 * * *", tag=签到时间（CRON）, desc=每日自动签到的执行时间（Cron表达式）
+cron_time = input, "3 0 * * *", tag=签到时间（CRON）, desc=每日自动签到的执行时间（Cron表达式）
 refreshInterval = input, "1440", tag=小组件刷新间隔（分钟）, desc=小组件自动刷新的时间间隔
 
 [Script]
