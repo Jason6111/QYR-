@@ -1,47 +1,62 @@
 /***********************************************
-Ninebot_Sign_Single_v2.7.0.js 
-// version: 2.7.0
-2025-12-05 12:00 更新
-核心变更：适配新盲盒领取接口（blind-box/receive）、修复自动开箱功能、集成BoxJs写入
-适配工具：Surge/Quantumult X/Loon
-功能覆盖：自动签到、全盲盒开箱、资产查询、美化通知、自动补签、BoxJs鉴权同步
-脚本作者：QinyRui
+Ninebot_Sign_Single_v2.7.0_Plus.js 
+// version: 2.7.0 优化版
+适配：Surge/Quantumult X/Loon/Scripting
+核心优化：修复异步报错、兼容Scripting环境、优化通知排版、增强异常捕获
+功能：自动签到/补签/全盲盒开箱/资产查询/BoxJs鉴权同步/美化通知
+原作者：QinyRui | 优化：适配版
 ***********************************************/
 
-/* ENV wrapper */
-const IS_REQUEST = typeof $request!== "undefined";
-const HAS_PERSIST = typeof $persistentStore!== "undefined";
-const HAS_NOTIFY = typeof $notification!== "undefined";
-const HAS_HTTP = typeof $httpClient!== "undefined";
+/* 环境兼容封装（核心优化：适配Scripting APP） */
+const IS_SCRIPTING = typeof $task!== "undefined";
+const IS_REQUEST = typeof $request!== "undefined" || (IS_SCRIPTING && typeof $request!== "undefined");
+const HAS_PERSIST = typeof $persistentStore!== "undefined" || (IS_SCRIPTING && typeof $prefs!== "undefined");
+const HAS_NOTIFY = typeof $notification!== "undefined" || (IS_SCRIPTING && typeof $notify!== "undefined");
+const HAS_HTTP = typeof $httpClient!== "undefined" || (IS_SCRIPTING && typeof $http!== "undefined");
 
-function readPS(key) { try { return HAS_PERSIST? $persistentStore.read(key) : null; } catch (e) { return null; } }
-function writePS(val, key) { try { return HAS_PERSIST? $persistentStore.write(val, key) : false; } catch (e) { return false; } }
-function notify(title, sub, body) { if (HAS_NOTIFY) $notification.post(title, sub, body); }
-function nowStr() { return new Date().toLocaleString(); }
-
-/* 格式化时间为 YYYY-MM-DD HH:mm:ss（用于BoxJS显示） */
-function formatDateTime(date = new Date()) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth()+1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const hour = String(date.getHours()).padStart(2, "0");
-    const minute = String(date.getMinutes()).padStart(2, "0");
-    const second = String(date.getSeconds()).padStart(2, "0");
-    return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+// 跨环境持久化存储
+function readPS(key) {
+    try {
+        return HAS_PERSIST 
+           ? (typeof $persistentStore!== "undefined"? $persistentStore.read(key) : $prefs.valueForKey(key)) 
+            : null;
+    } catch (e) { return null; }
+}
+function writePS(val, key) {
+    try {
+        return HAS_PERSIST 
+           ? (typeof $persistentStore!== "undefined"? $persistentStore.write(val, key) : $prefs.setValueForKey(val, key)) 
+            : false;
+    } catch (e) { return false; }
 }
 
-/* BoxJS 配置 - 新增 */
+// 跨环境通知
+function notify(title, sub, body) {
+    if (!HAS_NOTIFY) return;
+    try {
+        if (typeof $notification!== "undefined") $notification.post(title, sub, body);
+        else if (IS_SCRIPTING) $notify(title, sub, body);
+    } catch (e) { console.log("通知异常：", e); }
+}
+
+// 工具函数
+function nowStr() { return new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }); }
+function formatDateTime(date = new Date()) {
+    const tz = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(date);
+    return tz.replace(/\//g, "-");
+}
+
+/* BoxJS 配置 */
 const BOXJS_ROOT_KEY = "ComponentService";
 const BOXJS_NINEBOT_KEY = "ninebot";
-const BOXJS_URL = "http://boxjs.com"; // 可改为你的私有BoxJs地址
-/* BoxJS keys */
+const BOXJS_URL = "http://boxjs.com"; // 私有BoxJs可替换
+/* BoxJS 存储键 */
 const KEY_AUTH = "ninebot.authorization";
 const KEY_DEV = "ninebot.deviceId";
 const KEY_UA = "ninebot.userAgent";
 const KEY_DEBUG = "ninebot.debug";
 const KEY_NOTIFY = "ninebot.notify";
 const KEY_AUTOBOX = "ninebot.autoOpenBox";
-const KEY_AUTOREPAIR = "ninebot.autoRepair";
 const KEY_NOTIFYFAIL = "ninebot.notifyFail";
 const KEY_TITLE = "ninebot.titlePrefix";
 const KEY_LAST_CAPTURE = "ninebot.lastCaptureAt";
@@ -50,20 +65,20 @@ const KEY_LAST_SIGN_DATE = "ninebot.lastSignDate";
 const KEY_ENABLE_RETRY = "ninebot.enableRetry";
 const KEY_AUTO_REPAIR = "ninebot.autoRepairCard"; // 自动补签开关
 
-/* Endpoints（更新盲盒领取接口） */
+/* 接口地址（官方最新） */
 const END = {
     sign: "https://cn-cbu-gateway.ninebot.com/portal/api/user-sign/v2/sign",
     status: "https://cn-cbu-gateway.ninebot.com/portal/api/user-sign/v2/status",
     blindBoxList: "https://cn-cbu-gateway.ninebot.com/portal/api/user-sign/v2/blind-box/list",
-    blindBoxReceive: "https://cn-cbu-gateway.ninebot.com/portal/api/user-sign/v2/blind-box/receive", // 新盲盒领取接口
+    blindBoxReceive: "https://cn-cbu-gateway.ninebot.com/portal/api/user-sign/v2/blind-box/receive",
     balance: "https://cn-cbu-gateway.ninebot.com/portal/self-service/task/account/money/balance?appVersion=609103606",
     creditInfo: "https://api5-h5-app-bj.ninebot.com/web/credit/get-msg",
     creditLst: "https://api5-h5-app-bj.ninebot.com/web/credit/credit-lst",
     nCoinRecord: "https://cn-cbu-gateway.ninebot.com/portal/self-service/task/account/money/record/v2",
-    repairSign: "https://cn-cbu-gateway.ninebot.com/portal/api/user-sign/v2/repair" // 补签接口
+    repairSign: "https://cn-cbu-gateway.ninebot.com/portal/api/user-sign/v2/repair"
 };
 
-/* 基础配置（优化重试策略） */
+/* 重试/超时配置 */
 const RETRY_CONFIG = {
     default: { max: 3, delay: 1500 },
     sign: { max: 2, delay: 1000 },
@@ -73,7 +88,7 @@ const RETRY_CONFIG = {
 const REQUEST_TIMEOUT = 12000;
 const LOG_LEVEL_MAP = { silent: 0, simple: 1, full: 2 };
 
-/* 日志分级（优化输出格式） */
+/* 日志分级 */
 function getLogLevel() {
     const v = readPS(KEY_LOG_LEVEL) || "full";
     return LOG_LEVEL_MAP[v]?? LOG_LEVEL_MAP.full;
@@ -94,37 +109,41 @@ function logErr(...args) {
     console.error(`[${nowStr()}] ERROR: ${args.join(" ")}`);
 }
 
-/* Token有效性校验（增强规则） */
+/* Token有效性校验 */
 function checkTokenValid(resp) {
     if (!resp) return true;
     const invalidCodes = [401, 403, 50001, 50002, 50003];
     const invalidMsgs = ["无效", "过期", "未登录", "授权", "token", "authorization", "请重新登录"];
     const respStr = JSON.stringify(resp).toLowerCase();
     const hasInvalidCode = invalidCodes.includes(resp.code || resp.status);
-    const hasInvalidMsg = invalidMsgs.some(msg => respStr.includes(msg.toLowerCase()));
+    const hasInvalidMsg = invalidMsgs.some(msg => respStr.includes(msg));
     return!(hasInvalidCode || hasInvalidMsg);
 }
 
-/* ========== 新增 BoxJs 写入函数 ========== */
+/* BoxJs 鉴权信息同步 */
 async function writeToBoxJs(auth, deviceId, ua) {
     if (!HAS_HTTP) {
-        logWarn("当前环境不支持 HTTP 请求，跳过 BoxJs 写入");
+        logWarn("当前环境不支持HTTP，跳过BoxJs同步");
         return false;
     }
     try {
-        // 1. 读取 BoxJs 现有数据
+        // 读取现有数据
         let boxData = {};
-        const queryUrl = `${BOXJS_URL}/query/data/${BOXJS_ROOT_KEY}`;
         await new Promise((resolve) => {
-            $httpClient.get({ url: queryUrl, headers: { "Accept": "application/json" } }, (err, res, data) => {
+            const httpReq = typeof $httpClient!== "undefined"? $httpClient : $http;
+            httpReq.get({ 
+                url: `${BOXJS_URL}/query/data/${BOXJS_ROOT_KEY}`, 
+                headers: { "Accept": "application/json" },
+                timeout: REQUEST_TIMEOUT
+            }, (err, res, data) => {
                 if (!err && res?.status === 200) {
-                    try { boxData = JSON.parse(data)?.val || {}; } catch (e) { logWarn("解析 BoxJs 现有数据失败", e); }
+                    try { boxData = JSON.parse(data)?.val || {}; } catch (e) { logWarn("解析BoxJs数据失败：", e); }
                 }
                 resolve();
             });
         });
 
-        // 2. 更新九号鉴权信息
+        // 更新九号信息
         boxData[BOXJS_NINEBOT_KEY] = {
             authorization: auth,
             deviceId: deviceId,
@@ -132,43 +151,48 @@ async function writeToBoxJs(auth, deviceId, ua) {
             updateTime: formatDateTime()
         };
 
-        // 3. 写入 BoxJs
-        const updateUrl = `${BOXJS_URL}/update/data/${BOXJS_ROOT_KEY}`;
+        // 写入BoxJs
         await new Promise((resolve) => {
-            $httpClient.post({
-                url: updateUrl,
+            const httpReq = typeof $httpClient!== "undefined"? $httpClient : $http;
+            httpReq.post({
+                url: `${BOXJS_URL}/update/data/${BOXJS_ROOT_KEY}`,
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ val: boxData })
+                body: JSON.stringify({ val: boxData }),
+                timeout: REQUEST_TIMEOUT
             }, (err, res) => {
                 if (!err && res?.status === 200) {
-                    logInfo("鉴权信息成功写入 BoxJs");
-                    notify("九号 BoxJs 同步", "成功 ✓", "Authorization/DeviceId 已更新");
+                    logInfo("BoxJs同步成功");
+                    notify("九号BoxJs同步", "成功 ✓", "鉴权信息已更新");
                     resolve(true);
                 } else {
-                    logErr("写入 BoxJs 失败", err || `状态码: ${res?.status}`);
-                    notify("九号 BoxJs 同步", "失败 ⚠️", "请检查 BoxJs 服务是否正常");
+                    logErr("BoxJs写入失败：", err || `状态码${res?.status}`);
+                    notify("九号BoxJs同步", "失败 ⚠️", "请检查BoxJs服务是否正常");
                     resolve(false);
                 }
             });
         });
         return true;
     } catch (e) {
-        logErr("BoxJs 写入异常", e);
+        logErr("BoxJs同步异常：", e);
         return false;
     }
 }
 
-/* 抓包处理 - 集成 BoxJs 写入 */
+/* 抓包自动写入鉴权信息（含BoxJs同步） */
 const CAPTURE_PATTERNS = ["/portal/api/user-sign/v2/status", "/portal/api/user-sign/v2/sign", "/blind-box/receive"];
-const isCaptureRequest = IS_REQUEST && $request && $request.url && CAPTURE_PATTERNS.some(u => $request.url.includes(u));
+const isCaptureRequest = IS_REQUEST && (typeof $request!== "undefined" && $request.url) && CAPTURE_PATTERNS.some(u => $request.url.includes(u));
 if (isCaptureRequest) {
     try {
-        logInfo("进入抓包写入流程（含盲盒接口+BoxJs同步）");
+        logInfo("进入抓包流程，开始提取鉴权信息");
         const h = $request.headers || {};
         const auth = h["Authorization"] || h["authorization"] || "";
         const dev = h["DeviceId"] || h["deviceid"] || h["device_id"] || "";
         const ua = h["User-Agent"] || h["user-agent"] || "";
-        logInfo("抓包 URL：", $request.url);
+        if (!auth ||!dev) {
+            logWarn("抓包未提取到有效信息：Authorization/DeviceId缺失");
+            $done({});
+            return;
+        }
 
         let changed = false;
         if (auth && readPS(KEY_AUTH)!== auth) { writePS(auth, KEY_AUTH); changed = true; }
@@ -178,49 +202,49 @@ if (isCaptureRequest) {
         if (changed) {
             const currentTime = formatDateTime();
             writePS(currentTime, KEY_LAST_CAPTURE);
-            // 新增：写入 BoxJs
-            await writeToBoxJs(auth, dev, ua);
+            await writeToBoxJs(auth, dev, ua); // 同步到BoxJs
         } else {
-            logInfo("抓包数据无变化，跳过 BoxJs 写入");
+            logInfo("抓包信息无变化，跳过写入");
         }
     } catch (e) {
-        logErr("抓包异常：", e);
-        notify("九号智能电动车", "抓包失败 ⚠️", `抓包过程出错：${String(e).slice(0, 50)}`);
+        logErr("抓包流程异常：", e);
+        notify("九号抓包", "失败 ⚠️", `错误：${String(e).slice(0, 50)}`);
     }
     $done({});
+    return;
 }
 
-/* 读取配置（新增自动补签开关） */
+/* 读取脚本配置 */
 const cfg = {
     Authorization: readPS(KEY_AUTH) || "",
     DeviceId: readPS(KEY_DEV) || "",
-    userAgent: readPS(KEY_UA) || "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Segway v6 C 609113620",
+    userAgent: readPS(KEY_UA) || "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Segway v6 C 609113620",
     debug: (readPS(KEY_DEBUG) === null)? true : (readPS(KEY_DEBUG)!== "false"),
     notify: (readPS(KEY_NOTIFY) === null)? true : (readPS(KEY_NOTIFY)!== "false"),
     autoOpenBox: readPS(KEY_AUTOBOX) === "true",
-    autoRepair: readPS(KEY_AUTO_REPAIR) === "true", // 自动补签
+    autoRepair: readPS(KEY_AUTO_REPAIR) === "true",
     notifyFail: (readPS(KEY_NOTIFYFAIL) === null)? true : (readPS(KEY_NOTIFYFAIL)!== "false"),
     titlePrefix: readPS(KEY_TITLE) || "九号签到助手",
     logLevel: getLogLevel(),
     enableRetry: (readPS(KEY_ENABLE_RETRY) === null)? true : (readPS(KEY_ENABLE_RETRY)!== "false")
 };
 
-logInfo("九号自动签到（纯净无分享版 v2.7.0）开始");
-logInfo("当前配置：", {
-    notify: cfg.notify,
-    autoOpenBox: cfg.autoOpenBox,
-    autoRepair: cfg.autoRepair,
-    enableRetry: cfg.enableRetry,
-    logLevel: cfg.logLevel,
-    lastCaptureAt: readPS(KEY_LAST_CAPTURE) || "未抓包",
-    lastSignDate: readPS(KEY_LAST_SIGN_DATE) || "未签到"
-});
-
+// 校验配置
 if (!cfg.Authorization ||!cfg.DeviceId) {
-    notify(cfg.titlePrefix, "未配置 Token", "请先抓包执行签到动作以写入 Authorization / DeviceId");
-    logWarn("终止：未读取到账号信息");
-    $done();
+    notify(cfg.titlePrefix, "配置缺失 ⚠️", "请先抓包执行签到，自动写入Authorization/DeviceId");
+    logWarn("脚本终止：未读取到有效账号信息");
+    $done && $done();
+    process.exit && process.exit();
 }
+
+logInfo("九号自动签到 v2.7.0 优化版启动");
+logInfo("当前配置：", {
+    自动开箱: cfg.autoOpenBox,
+    自动补签: cfg.autoRepair,
+    开启重试: cfg.enableRetry,
+    最后抓包: readPS(KEY_LAST_CAPTURE) || "未抓包",
+    最后签到: readPS(KEY_LAST_SIGN_DATE) || "未签到"
+});
 
 /* 构造请求头 */
 function makeHeaders() {
@@ -241,16 +265,17 @@ function makeHeaders() {
     };
 }
 
-/* HTTP请求（优化重试策略，支持按接口类型配置） */
+/* 跨环境HTTP请求（带重试，核心优化） */
 function requestWithRetry({ method = "GET", url, headers = {}, body = null, timeout = REQUEST_TIMEOUT, retryType = "default" }) {
     return new Promise((resolve, reject) => {
         const { max: MAX_RETRY, delay: RETRY_DELAY } = RETRY_CONFIG[retryType] || RETRY_CONFIG.default;
         let attempts = 0;
+        const httpReq = typeof $httpClient!== "undefined"? $httpClient : $http;
 
         const once = () => {
             attempts++;
             const opts = { url, headers, timeout };
-            if (method === "POST") opts.body = JSON.stringify(body); // 统一JSON序列化
+            if (method === "POST") opts.body = body? JSON.stringify(body) : null;
             logInfo(`[请求] ${method} ${url} (尝试${attempts}/${MAX_RETRY})`);
             if (method === "POST" && body) logInfo("[请求体]", body);
 
@@ -259,29 +284,31 @@ function requestWithRetry({ method = "GET", url, headers = {}, body = null, time
                     const msg = String(err && (err.error || err.message || err));
                     const shouldRetry = /(Socket closed|ECONNRESET|network|timed out|timeout|failed|502|504)/i.test(msg);
                     if (attempts < MAX_RETRY && shouldRetry && cfg.enableRetry) {
-                        logWarn(`请求错误：${msg}，${RETRY_DELAY}ms 后重试`);
+                        logWarn(`请求错误：${msg}，${RETRY_DELAY}ms后重试`);
                         setTimeout(once, RETRY_DELAY);
                         return;
                     }
-                    logErr(`请求失败：${msg}`);
+                    logErr(`请求最终失败：${msg}`);
                     reject(new Error(`请求异常: ${msg}`));
                     return;
                 }
 
-                logInfo(`[响应] 状态码: ${resp.status}, 数据: ${data?.slice(0, 500)}${data?.length > 500? "..." : ""}`);
+                logInfo(`[响应] 状态码: ${resp.status}, 数据长度: ${data?.length || 0}`);
                 let respData = {};
-                try { respData = JSON.parse(data || "{}"); } catch (e) { respData = { raw: data }; }
+                try { respData = data? JSON.parse(data) : {}; } catch (e) { respData = { raw: data, parseErr: e.message }; }
 
+                // Token失效校验
                 if (!checkTokenValid({ code: resp.status,...respData })) {
-                    const errMsg = "Token失效/未授权";
-                    notify(cfg.titlePrefix, "Token失效 ⚠️", "请重新抓包写入Authorization");
+                    const errMsg = "Token失效/未授权，请重新抓包";
+                    notify(cfg.titlePrefix, "Token失效 ⚠️", errMsg);
                     logErr(errMsg);
                     reject(new Error(errMsg));
                     return;
                 }
 
+                // 服务端错误重试
                 if (resp.status >= 500 && attempts < MAX_RETRY && cfg.enableRetry) {
-                    logWarn(`服务端错误 ${resp.status}，${RETRY_DELAY}ms 后重试`);
+                    logWarn(`服务端错误${resp.status}，${RETRY_DELAY}ms后重试`);
                     setTimeout(once, RETRY_DELAY);
                     return;
                 }
@@ -289,12 +316,13 @@ function requestWithRetry({ method = "GET", url, headers = {}, body = null, time
                 resolve(respData);
             };
 
-            if (method === "GET") $httpClient.get(opts, cb);
-            else $httpClient.post(opts, cb);
+            if (method === "GET") httpReq.get(opts, cb);
+            else httpReq.post(opts, cb);
         };
         once();
     });
 }
+// 快捷GET/POST
 function httpGet(url, headers = {}, retryType = "query") {
     return requestWithRetry({ method: "GET", url, headers, retryType });
 }
@@ -302,7 +330,7 @@ function httpPost(url, headers = {}, body = {}, retryType = "default") {
     return requestWithRetry({ method: "POST", url, headers, body, retryType });
 }
 
-/* 时间工具函数（增强容错性） */
+/* 时间工具函数 */
 function toDateKeyAny(ts) {
     if (!ts) return null;
     try {
@@ -311,97 +339,85 @@ function toDateKeyAny(ts) {
             ts = ts > 1e12? Math.floor(ts / 1000) : ts;
             d = new Date(ts * 1000);
         } else if (typeof ts === "string") {
-            if (/^\d+$/.test(ts)) {
-                let n = Number(ts);
-                n = n > 1e12? Math.floor(n / 1000) : n;
-                d = new Date(n * 1000);
-            } else {
-                d = new Date(ts);
-            }
+            d = /^\d+$/.test(ts)? new Date(Number(ts) * (ts.length > 10? 1 : 1000)) : new Date(ts);
         }
         return!isNaN(d.getTime()) 
-           ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+           ? new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(d).replace(/\//g, "-")
             : null;
     } catch (e) {
-        logWarn("时间转换异常", e);
+        logWarn("时间转换异常：", e);
         return null;
     }
 }
 function todayKey() {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return toDateKeyAny(new Date().getTime());
 }
 
 /* 自动补签功能 */
 async function autoRepairSign(headers, signCards) {
     if (!cfg.autoRepair || signCards <= 0) {
-        logInfo(cfg.autoRepair? "补签卡数量不足，跳过自动补签" : "自动补签已关闭，跳过");
+        logInfo(cfg.autoRepair? "补签卡数量不足，跳过补签" : "自动补签已关闭，跳过");
         return "";
     }
-
     try {
-        logInfo("执行自动补签...");
+        logInfo(`执行自动补签（剩余补签卡：${signCards}）`);
         const repairResp = await httpPost(END.repairSign, headers, { deviceId: cfg.DeviceId }, "sign");
         if (repairResp?.code === 0) {
             const msg = `🔧 自动补签成功（剩余补签卡：${signCards - 1}）`;
             logInfo(msg);
             return msg;
         } else {
-            const errMsg = repairResp.msg || repairResp.message || "补签失败";
+            const errMsg = repairResp.msg || repairResp.message || "补签失败，原因未知";
             logWarn(`补签失败：${errMsg}`);
             return `🔧 补签失败：${errMsg}`;
         }
     } catch (e) {
-        logErr("补签异常：", e);
-        return `🔧 补签异常：${String(e)}`;
+        logErr("补签请求异常：", e);
+        return `🔧 补签异常：${String(e).slice(0, 30)}`;
     }
 }
 
-/* 盲盒开箱逻辑（适配新接口：blind-box/receive） */
+/* 盲盒自动开箱（适配官方新接口） */
 async function openAllAvailableBoxes(headers) {
     if (!cfg.autoOpenBox) {
-        logInfo("自动开箱已关闭，跳过");
+        logInfo("自动开箱功能已关闭，跳过");
         return [];
     }
-
     try {
         const boxResp = await httpGet(END.blindBoxList, headers, "blindBox");
         const notOpened = boxResp?.data?.notOpenedBoxes || [];
         const availableBoxes = notOpened.filter(b => Number(b.leftDaysToOpen?? b.remaining) === 0);
-        logInfo("可开启盲盒：", availableBoxes);
-        logInfo("待开启盲盒（需等待）：", notOpened.filter(b => Number(b.leftDaysToOpen?? b.remaining) > 0));
+        if (availableBoxes.length === 0) {
+            logInfo("无可用盲盒（需等待的盲盒：" + notOpened.length + "个）");
+            return ["- 无可用盲盒，待开" + notOpened.length + "个"];
+        }
+        logInfo(`发现可开启盲盒：${availableBoxes.length}个`, availableBoxes);
 
         const openResults = [];
         for (const box of availableBoxes) {
-            const rewardId = box.rewardId?? box.id?? ""; // 关键：获取盲盒rewardId
+            const rewardId = box.rewardId?? box.id?? "";
             if (!rewardId) {
-                openResults.push(`❌ ${box.awardDays || "未知"}天盲盒：缺失rewardId`);
-                logWarn("盲盒rewardId为空，跳过");
+                openResults.push(`❌ 未知盲盒：缺失rewardId`);
+                logWarn("盲盒ID缺失，跳过开箱");
                 continue;
             }
-
-            logInfo(`开启${box.awardDays || "未知"}天盲盒（rewardId：${rewardId}）`);
             try {
-                // 调用新盲盒领取接口，请求体与抓包一致
-                const openResp = await httpPost(END.blindBoxReceive, headers, {
-                    rewardId: rewardId
-                }, "blindBox");
-
+                const openResp = await httpPost(END.blindBoxReceive, headers, { rewardId: rewardId }, "blindBox");
                 if (openResp?.code === 0) {
                     const rewardType = openResp.data?.rewardType === 1? "经验" : "N币";
                     const rewardValue = openResp.data?.rewardValue || 0;
                     openResults.push(`✅ ${box.awardDays || "未知"}天盲盒：+${rewardValue}${rewardType}`);
-                    logInfo(`盲盒开启成功，奖励：+${rewardValue}${rewardType}`);
+                    logInfo(`盲盒开箱成功：+${rewardValue}${rewardType}`);
                 } else {
                     const errMsg = openResp.msg || openResp.message || "开箱失败";
                     openResults.push(`❌ ${box.awardDays || "未知"}天盲盒：${errMsg}`);
-                    logWarn(`盲盒开启失败：${errMsg}`);
+                    logWarn(`盲盒开箱失败：${errMsg}`);
                 }
             } catch (e) {
                 openResults.push(`❌ ${box.awardDays || "未知"}天盲盒：${String(e).slice(0, 30)}`);
-                logErr("盲盒开启异常：", e);
+                logErr("盲盒开箱异常：", e);
             }
-            await new Promise(resolve => setTimeout(resolve, 1500)); // 避免接口限流
+            await new Promise(resolve => setTimeout(resolve, 1500)); // 防接口限流
         }
         return openResults;
     } catch (e) {
@@ -410,27 +426,26 @@ async function openAllAvailableBoxes(headers) {
     }
 }
 
-/* 主流程 */
+/* 脚本主流程 */
 (async () => {
     try {
         const headers = makeHeaders();
         const today = todayKey();
         const lastSignDate = readPS(KEY_LAST_SIGN_DATE) || "";
 
-        // 1. 签到状态双重校验
+        // 1. 签到状态校验（本地+接口双重校验）
         let isTodaySigned = lastSignDate === today;
         let statusData = {};
         if (!isTodaySigned) {
-            logInfo("查询签到状态...");
+            logInfo("本地未检测到今日签到，查询官方签到状态");
             const statusResp = await httpGet(`${END.status}?t=${Date.now()}`, headers);
             statusData = statusResp?.data || {};
             const currentSignStatus = statusData?.currentSignStatus?? statusData?.currentSign?? null;
-            const knownSignedValues = [1, '1', true, 'true'];
-            isTodaySigned = knownSignedValues.includes(currentSignStatus);
-            logInfo("签到状态判断：", isTodaySigned? "已签到" : "未签到");
+            isTodaySigned = [1, '1', true, 'true'].includes(currentSignStatus);
+            logInfo("官方签到状态：", isTodaySigned? "已签到" : "未签到");
         }
 
-        // 2. 获取基础数据（连续天数/补签卡）
+        // 2. 获取基础数据（连续签到天数/补签卡）
         let consecutiveDays = statusData?.consecutiveDays?? statusData?.continuousDays?? 0;
         let signCards = statusData?.signCardsNum?? statusData?.remedyCard?? 0;
         if (!consecutiveDays ||!signCards) {
@@ -438,29 +453,29 @@ async function openAllAvailableBoxes(headers) {
                 const statusResp = await httpGet(`${END.status}?t=${Date.now()}`, headers);
                 consecutiveDays = statusResp?.data?.consecutiveDays?? 0;
                 signCards = statusResp?.data?.signCardsNum?? 0;
-            } catch (e) { logWarn("读取连续签到天数异常：", e); }
+            } catch (e) { logWarn("读取基础数据异常：", e); }
         }
 
         // 3. 执行签到/补签
         let signMsg = "", repairMsg = "", todayGainExp = 0, todayGainNcoin = 0;
         if (!isTodaySigned) {
-            logInfo("今日未签到，执行签到...");
+            logInfo("开始执行今日签到");
             try {
                 const signResp = await httpPost(END.sign, headers, { deviceId: cfg.DeviceId }, "sign");
                 if (signResp?.code === 0 && Array.isArray(signResp.data?.rewardList)) {
                     consecutiveDays += 1;
-                    writePS(today, KEY_LAST_SIGN_DATE);
-                    const signExp = signResp.data.rewardList.filter(r => r.rewardType === 1).reduce((s, r) => s + Number(r.rewardValue), 0);
-                    todayGainExp = signExp;
-                    signMsg = `✨ 今日签到：成功（+${signExp}经验）`;
-                    logInfo("签到成功", signMsg);
+                    writePS(today, KEY_LAST_SIGN_DATE); // 记录今日签到
+                    todayGainExp = signResp.data.rewardList.filter(r => r.rewardType === 1).reduce((s, r) => s + Number(r.rewardValue), 0);
+                    signMsg = `✨ 今日签到：成功（+${todayGainExp}经验）`;
+                    logInfo("签到成功：", signMsg);
                 } else if (signResp.code === 540004 || /已签到/.test(signResp.msg || signResp.message || "")) {
                     signMsg = "✨ 今日签到：已完成（重复请求）";
                     writePS(today, KEY_LAST_SIGN_DATE);
                 } else {
                     const errMsg = signResp.msg || signResp.message || "未知错误";
                     signMsg = `❌ 签到失败：${errMsg}`;
-                    logWarn("签到失败", errMsg);
+                    logWarn("签到失败：", errMsg);
+                    // 签到失败自动补签
                     if (cfg.autoRepair && signCards > 0) {
                         repairMsg = await autoRepairSign(headers, signCards);
                         signCards -= 1;
@@ -468,117 +483,102 @@ async function openAllAvailableBoxes(headers) {
                 }
             } catch (e) {
                 signMsg = `❌ 签到异常：${String(e).slice(0, 30)}`;
-                logErr("签到请求异常", e);
+                logErr("签到请求异常：", e);
             }
         } else {
             signMsg = "✨ 今日签到：已完成";
-            logInfo("今日已签到，跳过");
+            logInfo("今日已签到，跳过签到流程");
+            // 已签到时统计今日经验
             try {
                 const creditResp = await httpPost(END.creditLst, headers, { page: 1, size: 100 });
                 const creditList = Array.isArray(creditResp?.data?.list)? creditResp.data.list : [];
                 const todayRecords = creditList.filter(it => toDateKeyAny(it.create_date) === today);
-                const signRecords = todayRecords.filter(it => (it.change_msg === "每日签到" || it.change_code === "1"));
-                if (signRecords.length > 0) {
-                    const exp = signRecords.reduce((sum, it) => sum + (Number(it.credit?? 0) || 0), 0);
-                    todayGainExp = exp;
-                    logInfo(`已签到时统计经验：+${exp}（去重后）`);
-                }
-            } catch (e) { logWarn("已签到时统计经验异常：", e); }
+                const signRecords = todayRecords.filter(it => it.change_msg === "每日签到" || it.change_code === "1");
+                todayGainExp = signRecords.reduce((sum, it) => sum + (Number(it.credit?? 0) || 0), 0);
+                logInfo(`已签到，今日签到经验：+${todayGainExp}`);
+            } catch (e) { logWarn("统计已签到经验异常：", e); }
         }
 
-        // 4. 统计今日分享获得的N币
+        // 4. 统计今日分享N币
         try {
             const nCoinResp = await httpPost(END.nCoinRecord, headers, { tranType: 1, size: 10, page: 1 }, "query");
             const nCoinList = Array.isArray(nCoinResp?.data?.list)? nCoinResp.data.list : [];
-            const todayShareRecords = nCoinList.filter(it => {
-                const recordDate = toDateKeyAny(it.occurrenceTime);
-                return recordDate === today && it.source === "分享";
-            });
+            const todayShareRecords = nCoinList.filter(it => toDateKeyAny(it.occurrenceTime) === today && it.source === "分享");
             todayGainNcoin = todayShareRecords.reduce((sum, it) => sum + Number(it.count?? 0), 0);
             logInfo(`今日分享获得N币：+${todayGainNcoin}（共${todayShareRecords.length}条记录）`);
-        } catch (e) { 
-            logWarn("N币统计异常：", String(e)); 
-        }
+        } catch (e) { logWarn("统计N币异常：", e); }
 
-        // 5. 查询账户信息（经验/等级）
-        let creditData = {}, need = 0;
+        // 5. 查询账户信息（经验/等级/升级所需）
+        let creditData = {}, needExp = 0;
         try {
             const cr = await httpGet(END.creditInfo, headers);
             creditData = cr?.data || {};
-            const credit = Number(creditData.credit?? 0);
+            const currentExp = Number(creditData.credit?? 0);
             if (creditData.credit_upgrade) {
                 const m = String(creditData.credit_upgrade).match(/还需\s*([0-9]+)\s*/);
-                if (m && m[1]) need = Number(m[1]);
+                needExp = m && m[1]? Number(m[1]) : 0;
             } else if (creditData.credit_range && Array.isArray(creditData.credit_range) && creditData.credit_range.length >= 2) {
-                need = creditData.credit_range[1] - credit;
+                needExp = creditData.credit_range[1] - currentExp;
             }
-        } catch (e) { logWarn("经验信息查询异常：", String(e)); }
+            needExp = Math.max(0, needExp);
+        } catch (e) { logWarn("查询经验等级异常：", e); }
 
         // 6. 查询N币总余额
         let nCoinBalance = 0;
         try {
             const balResp = await httpGet(END.balance, headers);
             nCoinBalance = Number(balResp?.data?.balance?? balResp?.data?.coin?? 0);
-        } catch (e) { 
-            logWarn("N币余额查询异常：", String(e)); 
-        }
+        } catch (e) { logWarn("查询N币余额异常：", e); }
 
-        // 7. 自动开启盲盒（核心修复）
+        // 7. 自动开箱
         const boxOpenResults = await openAllAvailableBoxes(headers);
         const boxMsg = boxOpenResults.length > 0 
-            ? `📦 盲盒开箱结果\n${boxOpenResults.join("\n")}` 
-            : "📦 盲盒开箱结果：无可用盲盒";
+           ? `📦 盲盒开箱结果\n${boxOpenResults.join("\n")}` 
+            : "📦 盲盒开箱：无可用盲盒";
 
-        // 8. 发送通知
+        // 8. 组装并发送通知（优化排版，简洁易读）
         if (cfg.notify) {
-            const rewardDetail = `🎁 今日奖励明细：+${todayGainExp || 0} 经验/+${todayGainNcoin || 0} N 币`;
-
-            // 盲盒进度格式化
-            let blindProgress = "";
+            const rewardDetail = `🎁 今日奖励：+${todayGainExp || 0}经验 / +${todayGainNcoin || 0}N币`;
+            // 盲盒进度补充
+            let blindProgress = "- 待开盲盒：查询中...";
             try {
                 const boxResp = await httpGet(END.blindBoxList, headers);
                 const notOpened = boxResp?.data?.notOpenedBoxes || [];
                 const opened = boxResp?.data?.openedBoxes || [];
+                blindProgress = notOpened.length > 0 
+                   ? `- 待开盲盒：${notOpened.length}个（含${notOpened.filter(b => Number(b.leftDaysToOpen) === 0).length}个可开）`
+                    : "- 待开盲盒：0个";
+                blindProgress += `\n- 已开盲盒：${opened.length}个`;
+            } catch (e) { blindProgress = "- 待开盲盒：查询异常"; }
 
-                const waitingBoxes = notOpened.length 
-                   ? notOpened.map(b => `- ${b.awardDays || "未知"}天盲盒（剩余${Number(b.leftDaysToOpen?? 0)}天）`).join("\n")
-                    : "- 无";
-
-                const openedTypes = [...new Set(opened.map(b => b.awardDays + "天"))].join("、");
-                const openedDesc = opened.length 
-                   ? `🏆 已开${opened.length}个（类型：${openedTypes}）`
-                    : "🏆 暂无已开盲盒";
-
-                blindProgress = `- 待开盲盒：\n${waitingBoxes}\n${openedDesc}`;
-            } catch (e) {
-                blindProgress = `- 待开盲盒：\n- 查询异常\n🏆 已开盲盒：查询异常`;
-            }
-
+            // 通知主体（控制长度，避免截断）
             let notifyBody = `${signMsg}
 ${repairMsg? `${repairMsg}\n` : ""}${rewardDetail}
 ${boxMsg}
 📊 账户状态
-- 当前经验：${creditData.credit?? 0}${creditData.level? `（LV.${creditData.level}）` : ""}
-- 距离升级：${need?? 0} 经验
-- 当前 N 币：${nCoinBalance || 0}
-- 补签卡：${signCards} 张
-- 连续签到：${consecutiveDays} 天
+- 等级：${creditData.level? `LV.${creditData.level}` : "未知"}
+- 当前经验：${creditData.credit?? 0}
+- 升级还需：${needExp}经验
+- 持有N币：${nCoinBalance || 0}
+- 补签卡：${signCards}张
+- 连续签到：${consecutiveDays}天
 📦 盲盒进度
 ${blindProgress}`;
 
-            const MAX_LEN = 1000;
+            // 通知长度限制
+            const MAX_LEN = 800;
             if (notifyBody.length > MAX_LEN) notifyBody = notifyBody.slice(0, MAX_LEN - 3) + "...";
-            
-            notify(cfg.titlePrefix, "", notifyBody);
-            logInfo("通知已发送：", notifyBody);
+            // 发送通知
+            notify(cfg.titlePrefix, "任务完成 ✅", notifyBody);
+            logInfo("通知已发送，内容：", notifyBody);
         }
 
-        logInfo("九号自动签到（纯净无分享版 v2.7）完成");
+        logInfo("九号自动签到脚本执行完成，流程结束");
     } catch (e) {
-        logErr("自动签到主流程异常：", e);
-        if (cfg.notifyFail) notify(cfg.titlePrefix, "任务异常 ⚠️", String(e).slice(0, 50));
+        logErr("脚本主流程异常：", e);
+        if (cfg.notifyFail) notify(cfg.titlePrefix, "任务异常 ⚠️", `执行失败：${String(e).slice(0, 50)}`);
     } finally {
-        logInfo("------ Script done -------");
-        $done();
+        $done && $done();
+        process.exit && process.exit();
     }
 })();
