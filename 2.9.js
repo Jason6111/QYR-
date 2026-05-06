@@ -1,19 +1,16 @@
 /***********************************************
-Ninebot_Sign_Single_v2.9.js + 车辆数据完整版
-// version: 2.7.2 2026-05-06
-// 新增：完整车辆数据自动抓取写入BoxJs
-// 修复：请求方法错误、参数缺失问题
+Ninebot_Sign_Single_v2.9.js + 车辆数据抓取版
+// version: 2.9 优化版 + 电动车实时数据同步
 适配：Surge/Quantumult X/Loon/Scripting
-功能：自动签到/全盲盒开箱/N币余额查询/车辆数据自动同步
+功能：自动签到/补签/全盲盒开箱/车辆数据自动抓取写入BoxJs
 原作者：QinyRui | 优化：ByteValley
 ***********************************************/
-/* 环境兼容封装 */
+/* 环境兼容封装（核心优化：适配Scripting APP） */
 const IS_SCRIPTING = typeof $task!== "undefined";
 const IS_REQUEST = typeof $request!== "undefined" || (IS_SCRIPTING && typeof $request!== "undefined");
 const HAS_PERSIST = typeof $persistentStore!== "undefined" || (IS_SCRIPTING && typeof $prefs!== "undefined");
 const HAS_NOTIFY = typeof $notification!== "undefined" || (IS_SCRIPTING && typeof $notify!== "undefined");
 const HAS_HTTP = typeof $httpClient!== "undefined" || (IS_SCRIPTING && typeof $http!== "undefined");
-
 // 跨环境持久化存储
 function readPS(key) {
     try {
@@ -29,7 +26,6 @@ function writePS(val, key) {
             : false;
     } catch (e) { return false; }
 }
-
 // 跨环境通知
 function notify(title, sub, body) {
     if (!HAS_NOTIFY) return;
@@ -38,20 +34,17 @@ function notify(title, sub, body) {
         else if (IS_SCRIPTING) $notify(title, sub, body);
     } catch (e) { console.log("通知异常：", e); }
 }
-
 // 工具函数
 function nowStr() { return new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }); }
 function formatDateTime(date = new Date()) {
     const tz = new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(date);
     return tz.replace(/\//g, "-");
 }
-
 /* BoxJS 配置 */
 const BOXJS_ROOT_KEY = "ComponentService";
 const BOXJS_NINEBOT_KEY = "ninebot";
 const BOXJS_URL = "http://boxjs.com";
-
-/* BoxJS 存储键（车辆数据新增） */
+/* BoxJS 存储键 */
 const KEY_AUTH = "ninebot.authorization";
 const KEY_DEV = "ninebot.deviceId";
 const KEY_UA = "ninebot.userAgent";
@@ -65,27 +58,29 @@ const KEY_LOG_LEVEL = "ninebot.logLevel";
 const KEY_LAST_SIGN_DATE = "ninebot.lastSignDate";
 const KEY_ENABLE_RETRY = "ninebot.enableRetry";
 const KEY_AUTO_REPAIR = "ninebot.autoRepairCard";
-
-// 车辆数据完整键（你需要的所有字段）
-const KEY_VEHICLE_SN = "ninebot.vehicleSn";          // 车辆SN码
-const KEY_BATTERY_SOC = "ninebot.batterySoc";        // 剩余电量(%)
-const KEY_BATTERY_TEMP = "ninebot.batteryTemp";      // 电池温度(°C)
-const KEY_MILEAGE = "ninebot.mileage";               // 剩余续航(km)
-const KEY_TOTAL_MILEAGE = "ninebot.totalMileage";    // 总里程(km)
-const KEY_SPEED = "ninebot.speed";                   // 当前速度(km/h)
-const KEY_LOCK_STATUS = "ninebot.lockStatus";        // 设防状态(是否上锁)
-const KEY_VEHICLE_UPDATE = "ninebot.vehicleLastUpdate"; // 数据最后更新时间
-
-/* 接口地址 */
+// 车辆数据键（新增）
+const KEY_VEHICLE_SN = "ninebot.vehicleSn";
+const KEY_BATTERY_SOC = "ninebot.batterySoc";
+const KEY_MILEAGE = "ninebot.mileage";
+const KEY_TOTAL_MILEAGE = "ninebot.totalMileage";
+const KEY_LOCK_STATUS = "ninebot.lockStatus";
+const KEY_BATTERY_TEMP = "ninebot.batteryTemp";
+const KEY_SPEED = "ninebot.speed";
+const KEY_VEHICLE_UPDATE = "ninebot.vehicleLastUpdate";
+/* 接口地址（官方最新） */
 const END = {
     sign: "https://cn-cbu-gateway.ninebot.com/portal/api/user-sign/v2/sign",
     status: "https://cn-cbu-gateway.ninebot.com/portal/api/user-sign/v2/status",
     blindBoxList: "https://cn-cbu-gateway.ninebot.com/portal/api/user-sign/v2/blind-box/list",
     blindBoxReceive: "https://cn-cbu-gateway.ninebot.com/portal/api/user-sign/v2/blind-box/receive",
-    balance: "https://cn-cbu-gateway.ninebot.com/portal/self-service/task/account/money/balance",
+    balance: "https://cn-cbu-gateway.ninebot.com/portal/self-service/task/account/money/balance?appVersion=609103606",
+    creditInfo: "https://api5-h5-app-bj.ninebot.com/web/credit/get-msg",
+    creditLst: "https://api5-h5-app-bj.ninebot.com/web/credit/credit-lst",
     nCoinRecord: "https://cn-cbu-gateway.ninebot.com/portal/self-service/task/account/money/record/v2",
+    repairSign: "https://cn-cbu-gateway.ninebot.com/portal/api/user-sign/v2/repair",
+    vehicleRealTime: "https://api-ninebot.9fevs.com/api/vehicle/v1/device/realTimeData",
+    vehicleStatus: "https://api-jhcx-v6-bj.ninebot.com/vehicle/v1/device/status"
 };
-
 /* 重试/超时配置 */
 const RETRY_CONFIG = {
     default: { max: 3, delay: 1500 },
@@ -95,7 +90,6 @@ const RETRY_CONFIG = {
 };
 const REQUEST_TIMEOUT = 12000;
 const LOG_LEVEL_MAP = { silent: 0, simple: 1, full: 2 };
-
 /* 日志分级 */
 function getLogLevel() {
     const v = readPS(KEY_LOG_LEVEL) || "full";
@@ -116,7 +110,6 @@ function logErr(...args) {
     if (level < 1) return;
     console.error(`[${nowStr()}] ERROR: ${args.join(" ")}`);
 }
-
 /* Token有效性校验 */
 function checkTokenValid(resp) {
     if (!resp) return true;
@@ -127,9 +120,8 @@ function checkTokenValid(resp) {
     const hasInvalidMsg = invalidMsgs.some(msg => respStr.includes(msg));
     return!(hasInvalidCode || hasInvalidMsg);
 }
-
-/* BoxJs 数据同步（统一同步所有数据） */
-async function syncToBoxJs() {
+/* BoxJs 鉴权信息同步 */
+async function writeToBoxJs(auth, deviceId, ua) {
     if (!HAS_HTTP) {
         logWarn("当前环境不支持HTTP，跳过BoxJs同步");
         return false;
@@ -149,31 +141,13 @@ async function syncToBoxJs() {
                 resolve();
             });
         });
-
-        // 同步所有九号相关数据到BoxJs
-        boxData[BOXJS_NINEBOT_KEY] = {
-            // 鉴权信息
-            authorization: readPS(KEY_AUTH),
-            deviceId: readPS(KEY_DEV),
-            userAgent: readPS(KEY_UA),
-            updateTime: formatDateTime(),
-            
-            // 车辆数据
-            vehicleSn: readPS(KEY_VEHICLE_SN),
-            batterySoc: readPS(KEY_BATTERY_SOC),
-            batteryTemp: readPS(KEY_BATTERY_TEMP),
-            mileage: readPS(KEY_MILEAGE),
-            totalMileage: readPS(KEY_TOTAL_MILEAGE),
-            speed: readPS(KEY_SPEED),
-            lockStatus: readPS(KEY_LOCK_STATUS),
-            vehicleLastUpdate: readPS(KEY_VEHICLE_UPDATE),
-            
-            // 签到信息
-            lastSignDate: readPS(KEY_LAST_SIGN_DATE),
-            lastCaptureAt: readPS(KEY_LAST_CAPTURE)
+boxData[BOXJS_NINEBOT_KEY] = {
+            authorization: auth,
+            deviceId: deviceId,
+            userAgent: ua,
+            updateTime: formatDateTime()
         };
-
-        await new Promise((resolve) => {
+await new Promise((resolve) => {
             const httpReq = typeof $httpClient!== "undefined"? $httpClient : $http;
             httpReq.post({
                 url: `${BOXJS_URL}/update/data/${BOXJS_ROOT_KEY}`,
@@ -182,7 +156,7 @@ async function syncToBoxJs() {
                 timeout: REQUEST_TIMEOUT
             }, (err, res) => {
                 if (!err && res?.status === 200) {
-                    logInfo("BoxJs数据同步成功");
+                    logInfo("BoxJs同步成功");
                     resolve(true);
                 } else {
                     logErr("BoxJs写入失败：", err || `状态码${res?.status}`);
@@ -196,97 +170,36 @@ async function syncToBoxJs() {
         return false;
     }
 }
-
-/* 核心：车辆数据自动抓取解析 */
+/* 车辆数据自动抓取写入（新增核心） */
 async function captureVehicleData() {
     if (!IS_REQUEST ||!$response ||!$response.body) return;
-    
-    // 匹配所有车辆数据相关接口（覆盖99%的九号车型）
-    const vehiclePatterns = [
-        "/device/realTimeData",
-        "/vehicle/v1/device/status",
-        "/vehicle/v2/device/status",
-        "/device/status",
-        "/vehicle/info",
-        "/battery/info",
-        "/iot/device/data"
-    ];
-    
     const url = $request.url;
-    if (!vehiclePatterns.some(p => url.includes(p))) return;
-
-    try {
+    if (!url.includes("/device/realTimeData") &&!url.includes("/vehicle/v1/device/status")) return;
+try {
         const json = JSON.parse($response.body);
-        const data = json.data || json; // 兼容不同接口的返回结构
-        if (!data) return;
-
-        logInfo("捕获到车辆数据请求：", url);
-        
-        // 通用字段映射（兼容不同接口的字段名差异）
-        const write = (key, value) => {
-            if (value!== undefined && value!== null) {
-                writePS(String(value), key);
-                logInfo(`写入数据：${key} = ${value}`);
-            }
-        };
-
-        // 车辆SN码（多个可能的字段名）
-        write(KEY_VEHICLE_SN, data.sn || data.vehicleSn || data.deviceSn || data.serialNumber);
-        
-        // 剩余电量(%)
-        write(KEY_BATTERY_SOC, data.batterySoc || data.soc || data.batteryLevel || data.elec);
-        
-        // 电池温度(°C)
-        write(KEY_BATTERY_TEMP, data.batteryTemp || data.temp || data.batteryTemperature);
-        
-        // 剩余续航(km)
-        write(KEY_MILEAGE, data.mileage || data.remainingRange || data.range || data.endurance);
-        
-        // 总里程(km)
-        write(KEY_TOTAL_MILEAGE, data.totalMileage || data.totalDistance || data.odometer);
-        
-        // 当前速度(km/h)
-        write(KEY_SPEED, data.speed || data.currentSpeed || data.velocity);
-        
-        // 设防状态（是否上锁）
-        let lockStatus = "未知";
-        if (data.lockStatus!== undefined) {
-            lockStatus = data.lockStatus === 1 || data.lockStatus === true? "已上锁" : "已解锁";
-        } else if (data.isLocked!== undefined) {
-            lockStatus = data.isLocked? "已上锁" : "已解锁";
-        } else if (data.status!== undefined) {
-            lockStatus = data.status === 2? "已上锁" : "已解锁"; // 部分车型状态码2表示上锁
-        }
-        write(KEY_LOCK_STATUS, lockStatus);
-        
-        // 数据最后更新时间
-        const updateTime = formatDateTime();
-        writePS(updateTime, KEY_VEHICLE_UPDATE);
-
-        // 同步到BoxJs
-        await syncToBoxJs();
-        
-        logInfo("车辆数据同步完成", {
-            SN: readPS(KEY_VEHICLE_SN),
-            电量: `${readPS(KEY_BATTERY_SOC)}%`,
-            温度: `${readPS(KEY_BATTERY_TEMP)}°C`,
-            续航: `${readPS(KEY_MILEAGE)}km`,
-            总里程: `${readPS(KEY_TOTAL_MILEAGE)}km`,
-            速度: `${readPS(KEY_SPEED)}km/h`,
-            状态: readPS(KEY_LOCK_STATUS),
-            更新时间: updateTime
+        const d = json.data || json;
+        if (!d) return;
+const write = (k, v) => v !== undefined && writePS(String(v), k);
+        write(KEY_VEHICLE_SN, d.sn || d.vehicleSn);
+        write(KEY_BATTERY_SOC, d.batterySoc);
+        write(KEY_MILEAGE, d.mileage);
+        write(KEY_TOTAL_MILEAGE, d.totalMileage);
+        write(KEY_LOCK_STATUS, d.lockStatus);
+        write(KEY_BATTERY_TEMP, d.batteryTemp);
+        write(KEY_SPEED, d.speed);
+        writePS(formatDateTime(), KEY_VEHICLE_UPDATE);
+logInfo("车辆数据已同步到BoxJs:", {
+            电量: d.batterySoc + "%",
+            续航: d.mileage + "km",
+            总里程: d.totalMileage + "km"
         });
-
     } catch (e) {
         logErr("车辆数据解析失败", e);
-        logErr("原始响应数据：", $response.body.slice(0, 500));
     }
 }
-
-/* 抓包自动写入鉴权信息 */
+/* 抓包自动写入鉴权信息（含BoxJs同步） */
 const CAPTURE_PATTERNS = ["/portal/api/user-sign/v2/status", "/portal/api/user-sign/v2/sign", "/blind-box/receive"];
 const isCaptureRequest = IS_REQUEST && (typeof $request!== "undefined" && $request.url) && CAPTURE_PATTERNS.some(u => $request.url.includes(u));
-
 if (isCaptureRequest) {
     try {
         logInfo("进入抓包流程，开始提取鉴权信息");
@@ -294,23 +207,19 @@ if (isCaptureRequest) {
         const auth = h["Authorization"] || h["authorization"] || "";
         const dev = h["DeviceId"] || h["deviceid"] || h["device_id"] || "";
         const ua = h["User-Agent"] || h["user-agent"] || "";
-        
         if (!auth ||!dev) {
             logWarn("抓包未提取到有效信息：Authorization/DeviceId缺失");
             $done({});
             return;
         }
-
-        let changed = false;
+let changed = false;
         if (auth && readPS(KEY_AUTH)!== auth) { writePS(auth, KEY_AUTH); changed = true; }
         if (dev && readPS(KEY_DEV)!== dev) { writePS(dev, KEY_DEV); changed = true; }
         if (ua && readPS(KEY_UA)!== ua) { writePS(ua, KEY_UA); changed = true; }
-
-        if (changed) {
+if (changed) {
             const currentTime = formatDateTime();
             writePS(currentTime, KEY_LAST_CAPTURE);
-            await syncToBoxJs();
-            notify("九号抓包", "成功 ✅", "鉴权信息已自动写入BoxJs");
+            await writeToBoxJs(auth, dev, ua);
         } else {
             logInfo("抓包信息无变化，跳过写入");
         }
@@ -321,49 +230,37 @@ if (isCaptureRequest) {
     $done({});
     return;
 }
-
-// 执行车辆数据抓包（核心入口）
+// 执行车辆数据抓包（新增）
 await captureVehicleData();
-
 /* 读取脚本配置 */
 const cfg = {
     Authorization: readPS(KEY_AUTH) || "",
     DeviceId: readPS(KEY_DEV) || "",
-    userAgent: readPS(KEY_UA) || "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Segway v6 C 609113700",
+    userAgent: readPS(KEY_UA) || "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Segway v6 C 609113620",
     debug: (readPS(KEY_DEBUG) === null)? true : (readPS(KEY_DEBUG)!== "false"),
     notify: (readPS(KEY_NOTIFY) === null)? true : (readPS(KEY_NOTIFY)!== "false"),
     autoOpenBox: readPS(KEY_AUTOBOX) === "true",
-    autoRepair: false, // 临时关闭补签，接口异常
+    autoRepair: readPS(KEY_AUTO_REPAIR) === "true",
     notifyFail: (readPS(KEY_NOTIFYFAIL) === null)? true : (readPS(KEY_NOTIFYFAIL)!== "false"),
     titlePrefix: readPS(KEY_TITLE) || "九号签到助手",
     logLevel: getLogLevel(),
     enableRetry: (readPS(KEY_ENABLE_RETRY) === null)? true : (readPS(KEY_ENABLE_RETRY)!== "false")
 };
-
-// 校验配置（仅签到流程需要，车辆数据抓包不需要）
-if (typeof $task!== "undefined" && (!cfg.Authorization ||!cfg.DeviceId)) {
+// 校验配置
+if (!cfg.Authorization ||!cfg.DeviceId) {
     notify(cfg.titlePrefix, "配置缺失 ⚠️", "请先抓包执行签到，自动写入Authorization/DeviceId");
     logWarn("脚本终止：未读取到有效账号信息");
     $done && $done();
     process.exit && process.exit();
 }
-
-// 如果是车辆数据抓包请求，执行完直接退出
-if (IS_REQUEST && $request && $request.url && ["/device/", "/vehicle/"].some(p => $request.url.includes(p))) {
-    $done({});
-    return;
-}
-
-logInfo("九号自动签到 v2.7.2 车辆数据版启动");
+logInfo("九号自动签到 v2.7.0 车辆数据版启动");
 logInfo("当前配置：", {
     自动开箱: cfg.autoOpenBox,
-    自动补签: "已临时禁用（接口异常）",
+    自动补签: cfg.autoRepair,
     开启重试: cfg.enableRetry,
     最后抓包: readPS(KEY_LAST_CAPTURE) || "未抓包",
-    最后签到: readPS(KEY_LAST_SIGN_DATE) || "未签到",
-    最后车辆数据更新: readPS(KEY_VEHICLE_UPDATE) || "从未更新"
+    最后签到: readPS(KEY_LAST_SIGN_DATE) || "未签到"
 });
-
 /* 构造请求头 */
 function makeHeaders() {
     return {
@@ -382,22 +279,19 @@ function makeHeaders() {
         "referer": "https://h5-bj.ninebot.com/"
     };
 }
-
-/* 跨环境HTTP请求（带重试） */
+/* 跨环境HTTP请求（带重试，核心优化） */
 function requestWithRetry({ method = "GET", url, headers = {}, body = null, timeout = REQUEST_TIMEOUT, retryType = "default" }) {
     return new Promise((resolve, reject) => {
         const { max: MAX_RETRY, delay: RETRY_DELAY } = RETRY_CONFIG[retryType] || RETRY_CONFIG.default;
         let attempts = 0;
         const httpReq = typeof $httpClient!== "undefined"? $httpClient : $http;
-        
-        const once = () => {
+const once = () => {
             attempts++;
             const opts = { url, headers, timeout };
-            if (method === "POST" && body) opts.body = JSON.stringify(body);
+            if (method === "POST") opts.body = body? JSON.stringify(body) : null;
             logInfo(`[请求] ${method} ${url} (尝试${attempts}/${MAX_RETRY})`);
             if (method === "POST" && body) logInfo("[请求体]", body);
-            
-            const cb = (err, resp, data) => {
+const cb = (err, resp, data) => {
                 if (err) {
                     const msg = String(err && (err.error || err.message || err));
                     const shouldRetry = /(Socket closed|ECONNRESET|network|timed out|timeout|failed|502|504)/i.test(msg);
@@ -410,45 +304,35 @@ function requestWithRetry({ method = "GET", url, headers = {}, body = null, time
                     reject(new Error(`请求异常: ${msg}`));
                     return;
                 }
-                
-                logInfo(`[响应] 状态码: ${resp.status}, 数据长度: ${data?.length || 0}`);
+logInfo(`[响应] 状态码: ${resp.status}, 数据长度: ${data?.length || 0}`);
                 let respData = {};
-                try { respData = data? JSON.parse(data) : {}; } catch (e) { 
-                    respData = { raw: data, parseErr: e.message };
-                    logWarn("响应解析失败：", e.message);
-                }
-                
-                if (!checkTokenValid({ code: resp.status,...respData })) {
+                try { respData = data? JSON.parse(data) : {}; } catch (e) { respData = { raw: data, parseErr: e.message }; }
+if (!checkTokenValid({ code: resp.status,...respData })) {
                     const errMsg = "Token失效/未授权，请重新抓包";
                     notify(cfg.titlePrefix, "Token失效 ⚠️", errMsg);
                     logErr(errMsg);
                     reject(new Error(errMsg));
                     return;
                 }
-                
-                if (resp.status >= 500 && attempts < MAX_RETRY && cfg.enableRetry) {
+if (resp.status >= 500 && attempts < MAX_RETRY && cfg.enableRetry) {
                     logWarn(`服务端错误${resp.status}，${RETRY_DELAY}ms后重试`);
                     setTimeout(once, RETRY_DELAY);
                     return;
                 }
-                
-                resolve(respData);
+resolve(respData);
             };
-            
-            if (method === "GET") httpReq.get(opts, cb);
+if (method === "GET") httpReq.get(opts, cb);
             else httpReq.post(opts, cb);
         };
         once();
     });
 }
-
 function httpGet(url, headers = {}, retryType = "query") {
     return requestWithRetry({ method: "GET", url, headers, retryType });
 }
 function httpPost(url, headers = {}, body = {}, retryType = "default") {
     return requestWithRetry({ method: "POST", url, headers, body, retryType });
 }
-
 /* 时间工具函数 */
 function toDateKeyAny(ts) {
     if (!ts) return null;
@@ -471,26 +355,45 @@ function toDateKeyAny(ts) {
 function todayKey() {
     return toDateKeyAny(new Date().getTime());
 }
-
-/* 盲盒自动开箱 */
+/* 自动补签功能 */
+async function autoRepairSign(headers, signCards) {
+    if (!cfg.autoRepair || signCards <= 0) {
+        logInfo(cfg.autoRepair? "补签卡数量不足，跳过补签" : "自动补签已关闭，跳过");
+        return "";
+    }
+    try {
+        logInfo(`执行自动补签（剩余补签卡：${signCards}）`);
+        const repairResp = await httpPost(END.repairSign, headers, { deviceId: cfg.DeviceId }, "sign");
+        if (repairResp?.code === 0) {
+            const msg = `🔧 自动补签成功（剩余补签卡：${signCards - 1}）`;
+            logInfo(msg);
+            return msg;
+        } else {
+            const errMsg = repairResp.msg || repairResp.message || "补签失败，原因未知";
+            logWarn(`补签失败：${errMsg}`);
+            return `🔧 补签失败：${errMsg}`;
+        }
+    } catch (e) {
+        logErr("补签请求异常：", e);
+        return `🔧 补签异常：${String(e).slice(0, 30)}`;
+    }
+}
+/* 盲盒自动开箱（适配官方新接口） */
 async function openAllAvailableBoxes(headers) {
     if (!cfg.autoOpenBox) {
         logInfo("自动开箱功能已关闭，跳过");
         return [];
     }
     try {
-        const boxResp = await httpGet(`${END.blindBoxList}?deviceId=${cfg.DeviceId}`, headers, "blindBox");
+        const boxResp = await httpGet(END.blindBoxList, headers, "blindBox");
         const notOpened = boxResp?.data?.notOpenedBoxes || [];
         const availableBoxes = notOpened.filter(b => Number(b.leftDaysToOpen?? b.remaining) === 0);
-        
         if (availableBoxes.length === 0) {
             logInfo("无可用盲盒（需等待的盲盒：" + notOpened.length + "个）");
-            return [`- 无可用盲盒，待开${notOpened.length}个`];
+            return ["- 无可用盲盒，待开" + notOpened.length + "个"];
         }
-        
-        logInfo(`发现可开启盲盒：${availableBoxes.length}个`);
-        const openResults = [];
-        
+        logInfo(`发现可开启盲盒：${availableBoxes.length}个`, availableBoxes);
+const openResults = [];
         for (const box of availableBoxes) {
             const rewardId = box.rewardId?? box.id?? "";
             if (!rewardId) {
@@ -498,14 +401,8 @@ async function openAllAvailableBoxes(headers) {
                 logWarn("盲盒ID缺失，跳过开箱");
                 continue;
             }
-            
             try {
-                const openResp = await httpGet(
-                    `${END.blindBoxReceive}?deviceId=${cfg.DeviceId}&rewardId=${rewardId}`, 
-                    headers, 
-                    "blindBox"
-                );
-                
+                const openResp = await httpPost(END.blindBoxReceive, headers, { rewardId: rewardId }, "blindBox");
                 if (openResp?.code === 0) {
                     const rewardType = openResp.data?.rewardType === 1? "经验" : "N币";
                     const rewardValue = openResp.data?.rewardValue || 0;
@@ -520,151 +417,142 @@ async function openAllAvailableBoxes(headers) {
                 openResults.push(`❌ ${box.awardDays || "未知"}天盲盒：${String(e).slice(0, 30)}`);
                 logErr("盲盒开箱异常：", e);
             }
-            
             await new Promise(resolve => setTimeout(resolve, 1500));
         }
-        
         return openResults;
     } catch (e) {
         logErr("盲盒查询异常：", e);
         return ["❌ 盲盒功能异常：" + String(e).slice(0, 30)];
     }
 }
-
-/* 脚本主流程（仅定时任务执行） */
-if (typeof $task!== "undefined") {
-    (async () => {
-        try {
-            const headers = makeHeaders();
-            const today = todayKey();
-            const lastSignDate = readPS(KEY_LAST_SIGN_DATE) || "";
-            let isTodaySigned = lastSignDate === today;
-            let statusData = {};
-            
-            if (!isTodaySigned) {
-                logInfo("本地未检测到今日签到，查询官方签到状态");
-                const statusResp = await httpGet(`${END.status}?deviceId=${cfg.DeviceId}&t=${Date.now()}`, headers);
-                statusData = statusResp?.data || {};
-                const currentSignStatus = statusData?.currentSignStatus?? statusData?.currentSign?? null;
-                isTodaySigned = [1, '1', true, 'true'].includes(currentSignStatus);
-                logInfo("官方签到状态：", isTodaySigned? "已签到" : "未签到");
-            }
-            
-            let consecutiveDays = statusData?.consecutiveDays?? statusData?.continuousDays?? 0;
-            let signCards = statusData?.signCardsNum?? statusData?.remedyCard?? 0;
-            
-            let signMsg = "", todayGainExp = 0, todayGainNcoin = 0;
-            if (!isTodaySigned) {
-                logInfo("开始执行今日签到");
-                try {
-                    const signResp = await httpGet(
-                        `${END.sign}?deviceId=${cfg.DeviceId}`, 
-                        headers, 
-                        "sign"
-                    );
-                    
-                    if (signResp?.code === 0 && Array.isArray(signResp.data?.rewardList)) {
-                        consecutiveDays += 1;
-                        writePS(today, KEY_LAST_SIGN_DATE);
-                        todayGainExp = signResp.data.rewardList.filter(r => r.rewardType === 1).reduce((s, r) => s + Number(r.rewardValue), 0);
-                        signMsg = `✨ 今日签到：成功（+${todayGainExp}经验）`;
-                        logInfo("签到成功：", signMsg);
-                    } else if (signResp.code === 540004 || /已签到/.test(signResp.msg || signResp.message || "")) {
-                        signMsg = "✨ 今日签到：已完成（重复请求）";
-                        writePS(today, KEY_LAST_SIGN_DATE);
-                    } else {
-                        const errMsg = signResp.msg || signResp.message || "未知错误";
-                        signMsg = `❌ 签到失败：${errMsg}`;
-                        logWarn("签到失败：", errMsg);
+/* 脚本主流程 */
+(async () => {
+    try {
+        const headers = makeHeaders();
+        const today = todayKey();
+        const lastSignDate = readPS(KEY_LAST_SIGN_DATE) || "";
+let isTodaySigned = lastSignDate === today;
+        let statusData = {};
+        if (!isTodaySigned) {
+            logInfo("本地未检测到今日签到，查询官方签到状态");
+            const statusResp = await httpGet(`${END.status}?t=${Date.now()}`, headers);
+            statusData = statusResp?.data || {};
+            const currentSignStatus = statusData?.currentSignStatus?? statusData?.currentSign?? null;
+            isTodaySigned = [1, '1', true, 'true'].includes(currentSignStatus);
+            logInfo("官方签到状态：", isTodaySigned? "已签到" : "未签到");
+        }
+let consecutiveDays = statusData?.consecutiveDays?? statusData?.continuousDays?? 0;
+        let signCards = statusData?.signCardsNum?? statusData?.remedyCard?? 0;
+        if (!consecutiveDays ||!signCards) {
+            try {
+                const statusResp = await httpGet(`${END.status}?t=${Date.now()}`, headers);
+                consecutiveDays = statusResp?.data?.consecutiveDays?? 0;
+                signCards = statusResp?.data?.signCardsNum?? 0;
+            } catch (e) { logWarn("读取基础数据异常：", e); }
+        }
+let signMsg = "", repairMsg = "", todayGainExp = 0, todayGainNcoin = 0;
+        if (!isTodaySigned) {
+            logInfo("开始执行今日签到");
+            try {
+                const signResp = await httpPost(END.sign, headers, { deviceId: cfg.DeviceId }, "sign");
+                if (signResp?.code === 0 && Array.isArray(signResp.data?.rewardList)) {
+                    consecutiveDays += 1;
+                    writePS(today, KEY_LAST_SIGN_DATE);
+                    todayGainExp = signResp.data.rewardList.filter(r => r.rewardType === 1).reduce((s, r) => s + Number(r.rewardValue), 0);
+                    signMsg = `✨ 今日签到：成功（+${todayGainExp}经验）`;
+                    logInfo("签到成功：", signMsg);
+                } else if (signResp.code === 540004 || /已签到/.test(signResp.msg || signResp.message || "")) {
+                    signMsg = "✨ 今日签到：已完成（重复请求）";
+                    writePS(today, KEY_LAST_SIGN_DATE);
+                } else {
+                    const errMsg = signResp.msg || signResp.message || "未知错误";
+                    signMsg = `❌ 签到失败：${errMsg}`;
+                    logWarn("签到失败：", errMsg);
+                    if (cfg.autoRepair && signCards > 0) {
+                        repairMsg = await autoRepairSign(headers, signCards);
+                        signCards -= 1;
                     }
-                } catch (e) {
-                    signMsg = `❌ 签到异常：${String(e).slice(0, 30)}`;
-                    logErr("签到请求异常：", e);
                 }
-            } else {
-                signMsg = "✨ 今日签到：已完成";
-                logInfo("今日已签到，跳过签到流程");
+            } catch (e) {
+                signMsg = `❌ 签到异常：${String(e).slice(0, 30)}`;
+                logErr("签到请求异常：", e);
             }
-            
+        } else {
+            signMsg = "✨ 今日签到：已完成";
+            logInfo("今日已签到，跳过签到流程");
             try {
-                const nCoinResp = await httpGet(
-                    `${END.nCoinRecord}?deviceId=${cfg.DeviceId}&tranType=1&size=10&page=1`, 
-                    headers, 
-                    "query"
-                );
-                const nCoinList = Array.isArray(nCoinResp?.data?.list)? nCoinResp.data.list : [];
-                const todayShareRecords = nCoinList.filter(it => toDateKeyAny(it.occurrenceTime) === today && it.source === "分享");
-                todayGainNcoin = todayShareRecords.reduce((sum, it) => sum + Number(it.count?? 0), 0);
-                logInfo(`今日分享获得N币：+${todayGainNcoin}`);
-            } catch (e) { logWarn("统计N币异常：", e); }
-            
-            let nCoinBalance = 0;
+                const creditResp = await httpPost(END.creditLst, headers, { page: 1, size: 100 });
+                const creditList = Array.isArray(creditResp?.data?.list)? creditResp.data.list : [];
+                const todayRecords = creditList.filter(it => toDateKeyAny(it.create_date) === today);
+                const signRecords = todayRecords.filter(it => it.change_msg === "每日签到" || it.change_code === "1");
+                todayGainExp = signRecords.reduce((sum, it) => sum + (Number(it.credit?? 0) || 0), 0);
+                logInfo(`已签到，今日签到经验：+${todayGainExp}`);
+            } catch (e) { logWarn("统计已签到经验异常：", e); }
+        }
+try {
+            const nCoinResp = await httpPost(END.nCoinRecord, headers, { tranType: 1, size: 10, page: 1 }, "query");
+            const nCoinList = Array.isArray(nCoinResp?.data?.list)? nCoinResp.data.list : [];
+            const todayShareRecords = nCoinList.filter(it => toDateKeyAny(it.occurrenceTime) === today && it.source === "分享");
+            todayGainNcoin = todayShareRecords.reduce((sum, it) => sum + Number(it.count?? 0), 0);
+            logInfo(`今日分享获得N币：+${todayGainNcoin}`);
+        } catch (e) { logWarn("统计N币异常：", e); }
+let creditData = {}, needExp = 0;
+        try {
+            const cr = await httpGet(END.creditInfo, headers);
+            creditData = cr?.data || {};
+            const currentExp = Number(creditData.credit?? 0);
+            if (creditData.credit_upgrade) {
+                const m = String(creditData.credit_upgrade).match(/还需\s*([0-9]+)\s*/);
+                needExp = m && m[1]? Number(m[1]) : 0;
+            } else if (creditData.credit_range && Array.isArray(creditData.credit_range) && creditData.credit_range.length >= 2) {
+                needExp = creditData.credit_range[1] - currentExp;
+            }
+            needExp = Math.max(0, needExp);
+        } catch (e) { logWarn("查询经验等级异常：", e); }
+let nCoinBalance = 0;
+        try {
+            const balResp = await httpGet(END.balance, headers);
+            nCoinBalance = Number(balResp?.data?.balance?? balResp?.data?.coin?? 0);
+        } catch (e) { logWarn("查询N币余额异常：", e); }
+const boxOpenResults = await openAllAvailableBoxes(headers);
+        const boxMsg = boxOpenResults.length > 0 
+           ? `📦 盲盒开箱结果\n${boxOpenResults.join("\n")}` 
+            : "📦 盲盒开箱：无可用盲盒";
+if (cfg.notify) {
+            const rewardDetail = `🎁 今日奖励：+${todayGainExp || 0}经验 / +${todayGainNcoin || 0}N币`;
+            let blindProgress = "- 待开盲盒：查询中...";
             try {
-                const balResp = await httpGet(`${END.balance}?deviceId=${cfg.DeviceId}&appVersion=609103606`, headers);
-                nCoinBalance = Number(balResp?.data?.balance?? balResp?.data?.coin?? 0);
-            } catch (e) { logWarn("查询N币余额异常：", e); }
-            
-            const boxOpenResults = await openAllAvailableBoxes(headers);
-            const boxMsg = boxOpenResults.length > 0 
-               ? `📦 盲盒开箱结果\n${boxOpenResults.join("\n")}` 
-                : "📦 盲盒开箱：无可用盲盒";
-            
-            if (cfg.notify) {
-                const rewardDetail = `🎁 今日奖励：+${todayGainExp || 0}经验 / +${todayGainNcoin || 0}N币`;
-                let blindProgress = "- 待开盲盒：查询中...";
-                
-                try {
-                    const boxResp = await httpGet(`${END.blindBoxList}?deviceId=${cfg.DeviceId}`, headers);
-                    const notOpened = boxResp?.data?.notOpenedBoxes || [];
-                    const opened = boxResp?.data?.openedBoxes || [];
-                    blindProgress = notOpened.length > 0 
-                       ? `- 待开盲盒：${notOpened.length}个（可开：${notOpened.filter(b => Number(b.leftDaysToOpen) === 0).length}个）`
-                        : "- 待开盲盒：0个";
-                    blindProgress += `\n- 已开盲盒：${opened.length}个`;
-                } catch (e) { blindProgress = "- 待开盲盒：查询异常"; }
-                
-                // 添加车辆数据到通知
-                let vehicleInfo = "";
-                if (readPS(KEY_VEHICLE_SN)) {
-                    vehicleInfo = `
-🚗 车辆状态
-- SN码：${readPS(KEY_VEHICLE_SN)}
-- 电量：${readPS(KEY_BATTERY_SOC) || "未知"}%
-- 温度：${readPS(KEY_BATTERY_TEMP) || "未知"}°C
-- 续航：${readPS(KEY_MILEAGE) || "未知"}km
-- 总里程：${readPS(KEY_TOTAL_MILEAGE) || "未知"}km
-- 状态：${readPS(KEY_LOCK_STATUS) || "未知"}
-- 最后更新：${readPS(KEY_VEHICLE_UPDATE) || "从未更新"}`;
-                }
-                
-                let notifyBody = `${signMsg}
-${rewardDetail}
+                const boxResp = await httpGet(END.blindBoxList, headers);
+                const notOpened = boxResp?.data?.notOpenedBoxes || [];
+                const opened = boxResp?.data?.openedBoxes || [];
+                blindProgress = notOpened.length > 0 
+                   ? `- 待开盲盒：${notOpened.length}个（可开：${notOpened.filter(b => Number(b.leftDaysToOpen) === 0).length}个）`
+                    : "- 待开盲盒：0个";
+                blindProgress += `\n- 已开盲盒：${opened.length}个`;
+            } catch (e) { blindProgress = "- 待开盲盒：查询异常"; }
+let notifyBody = `${signMsg}
+${repairMsg? `${repairMsg}\n` : ""}${rewardDetail}
 ${boxMsg}
 📊 账户状态
+- 等级：${creditData.level? `LV.${creditData.level}` : "未知"}
+- 当前经验：${creditData.credit?? 0}
+- 升级还需：${needExp}经验
 - 持有N币：${nCoinBalance || 0}
-- 补签卡：${signCards}张（补签功能临时禁用）
+- 补签卡：${signCards}张
 - 连续签到：${consecutiveDays}天
 📦 盲盒进度
-${blindProgress}${vehicleInfo}
-⚠️ 注意：积分查询、自动补签功能已临时屏蔽，待官方接口修复后更新`;
-                
-                const MAX_LEN = 1000;
-                if (notifyBody.length > MAX_LEN) notifyBody = notifyBody.slice(0, MAX_LEN - 3) + "...";
-                
-                notify(cfg.titlePrefix, "任务完成 ✅", notifyBody);
-                logInfo("通知已发送");
-            }
-            
-            // 同步所有数据到BoxJs
-            await syncToBoxJs();
-            
-            logInfo("九号自动签到脚本执行完成");
-        } catch (e) {
-            logErr("脚本主流程异常：", e);
-            if (cfg.notifyFail) notify(cfg.titlePrefix, "任务异常 ⚠️", `执行失败：${String(e).slice(0, 50)}`);
-        } finally {
-            $done && $done();
-            process.exit && process.exit();
+${blindProgress}`;
+const MAX_LEN = 800;
+            if (notifyBody.length > MAX_LEN) notifyBody = notifyBody.slice(0, MAX_LEN - 3) + "...";
+            notify(cfg.titlePrefix, "任务完成 ✅", notifyBody);
+            logInfo("通知已发送");
         }
-    })();
-}
+logInfo("九号自动签到脚本执行完成");
+    } catch (e) {
+        logErr("脚本主流程异常：", e);
+        if (cfg.notifyFail) notify(cfg.titlePrefix, "任务异常 ⚠️", `执行失败：${String(e).slice(0, 50)}`);
+    } finally {
+        $done && $done();
+        process.exit && process.exit();
+    }
+})();
