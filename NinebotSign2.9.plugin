@@ -1,30 +1,34 @@
 #!name = 九号智能电动车 · 单号自动签到（自动抓包版）
-#!desc = 抓包自动写入教程→无需手动开抓包开关，直接打开九号APP签到页，凭证将自动写入ComponentService
+#!desc = 打开九号APP签到页自动写入凭证；首页自动同步车辆数据
 #!openUrl = https://t.me/JiuHaoAPP
 #!author = QinyRui
 #!homepage = https://t.me/JiuHaoAPP
 #!tag = 九号智能电动车
 #!system = iOS,iPadOS,macOS
-#!date = 2026-04-04
-#!version = 2.7.0 + 车辆数据版
+#!date = 2026-05-06
+#!version = 2.9.0 + 车辆数据增强版
 #!system_version = 15
+
 [Argument]
-capture = switch, "false", "true", tag=自动抓包开关, desc=开启后访问九号签到接口自动写入鉴权信息到BoxJs
+capture = switch, "true", "false", tag=自动抓包开关, desc=开启后访问九号签到接口自动写入鉴权信息到BoxJs
 notify = switch, "true", "false", tag=通知开关, desc=是否推送签到结果通知
 titlePrefix = input, "九号签到助手", tag=自定义通知标题, desc=签到结果通知的标题前缀
 cron_time = input, "3 0 * * *", tag=签到时间（CRON）, desc=每日自动签到的执行时间（Cron表达式）
 refreshInterval = input, "1440", tag=小组件刷新间隔（分钟）, desc=小组件自动刷新的时间间隔
+
 [Script]
-# 1. 抓包写入BoxJs + 车辆数据同步
-http-response ^https:\/\/cn-cbu-gateway\.ninebot\.com\/portal\/api\/user-sign\/v2\/status script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/2.9.js, timeout=10, tag=九号-抓包写入, enable={capture}, script-update-interval=0, requires-body=true
-# 2. 车辆实时数据自动抓取（新增）
-http-response ^https:\/\/api-ninebot\.9fevs\.com\/api\/vehicle\/v1\/device\/realTimeData script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/2.9.js, requires-body=true, tag=九号-车辆数据, enable=true, script-update-interval=0
-http-response ^https:\/\/.+-v6-bj\.ninebot\.com\/vehicle\/v1\/device\/status script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/2.9.js, requires-body=true, tag=九号-车辆兼容, enable=true, script-update-interval=0
+# 1. 抓包写入 Authorization + DeviceId
+http-response ^https:\/\/cn-cbu-gateway\.ninebot\.com\/portal\/api\/user-sign\/v2\/status script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/2.9.js, timeout=10, tag=九号-抓包写入, enable={capture}, requires-body=true
+
+# 2. 车辆数据通用抓取（兼容多域名+路径）
+http-response ^https:\/\/.*ninebot\.com\/.*\/(vehicle|device)\/(realTimeData|status) script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/2.9.js, timeout=10, tag=九号-车辆数据, enable=true, requires-body=true
+
 # 3. 每日自动签到+盲盒开箱
-cron {cron_time} script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/2.9.js, timeout=120, tag=九号-自动签到, enable=true, script-update-interval=0
-# 4. BoxJs跨域重写
-http-response ^https:\/\/raw\.githubusercontent\.com\/QinyRui\/QYR-\/main\/jiuhao\/Ninebot\.boxjs\.json script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/BoxJsCors.js, tag=九号-BoxJs跨域, enable=true, script-update-interval=0
-# 5. 脚本更新检查
-cron "0 0 * * 0" script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/CheckUpdate.js, tag=九号-脚本更新检查, enable=true
+cron {cron_time} script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/2.9.js, timeout=120, tag=九号-自动签到, enable=true
+
+# 4. BoxJS 跨域支持
+http-response ^https:\/\/raw\.githubusercontent\.com\/QinyRui\/QYR-\/.*\/Ninebot\.boxjs\.json script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/BoxJsCors.js, tag=九号-BoxJs跨域, enable=true
+
 [Rewrite]
-https:\/\/raw\.githubusercontent\.com\/QinyRui\/QYR-\/main\/jiuhao\/Ninebot\.boxjs\.json response-body script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/BoxJsCors.js
+# 跨域重写（备用）
+https:\/\/raw\.githubusercontent\.com\/QinyRui\/QYR-\/.*\/Ninebot\.boxjs\.json - response-body - header="Access-Control-Allow-Origin: *" header="Access-Control-Allow-Methods: GET,OPTIONS"
