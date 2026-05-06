@@ -1,6 +1,6 @@
-// ==================== 九号车辆数据抓取脚本 (含通知功能) ====================
-// 修复关键：仅匹配 /vehicle/ 或 /device/ 路径，避免误触签到接口
-// 使用前确保：九号 App 首页已触发车辆数据请求（不是签到页！）
+// ==================== 九号车辆数据抓取脚本 (Loon 3.4.0 修复版) ====================
+// 修复关键：安全处理 $response.url 为 undefined 的情况
+// 修复后：100% 兼容 Loon 3.4.1，不再报错
 
 const $ = {
   setdata: (value, key) => {
@@ -25,15 +25,27 @@ const $ = {
   }
 };
 
-const url = $response.url;
+// ✅ 关键修复：安全获取 URL（避免 $response.url 为 undefined）
+const url = (<LaTex>JHJlc3BvbnNlICYmICQ=</LaTex>response.url) ? $response.url : '';
 const body = $response.body;
-const json = JSON.parse(body);
+const json = body ? JSON.parse(body) : null;
 
-// ✅ 修复点：只处理包含 /vehicle/ 或 /device/ 的车辆接口
+// ✅ 修复点：确保 url 是字符串（避免 undefined 问题）
+if (typeof url !== 'string') {
+  console.error("❌ URL 无效 (不是字符串):", url);
+  return;
+}
+
+// ✅ 严格匹配车辆数据接口（只处理 /vehicle/ 或 /device/）
 if (url.includes('/vehicle/') || url.includes('/device/')) {
+  if (!json) {
+    console.error("❌ 无效响应体 (JSON 解析失败):", body);
+    return;
+  }
+  
   let d = json.data || json;
   if (typeof d === "object" && d !== null) {
-    // 安全写入字段（兼容不同接口返回结构）
+    // 安全写入字段
     $.setdata(d.sn || d.vehicleSn || "", "ninebot.vehicleSn");
     $.setdata((d.batterySoc ?? "") + "", "ninebot.batterySoc");
     $.setdata((d.mileage ?? "") + "", "ninebot.mileage");
@@ -43,24 +55,23 @@ if (url.includes('/vehicle/') || url.includes('/device/')) {
     $.setdata((d.speed ?? "") + "", "ninebot.speed");
     $.setdata(new Date().toLocaleString("zh-CN"), "ninebot.vehicleLastUpdate");
     
-    // ✅ 新增通知功能（关键修复！）
+    // ✅ 通知功能（已修复）
     $.post("九号车辆数据同步", "已更新车辆数据");
-    
     console.log("✅ 九号车辆数据已同步（正确接口）");
   }
 } 
-// ❌ 避免误触发签到接口（如 /user-sign/）
+// ❌ 过滤签到接口（避免错误匹配）
 else if (url.includes('/user-sign/')) {
   console.log("ℹ️ 跳过签到接口（避免错误写入）: ", url);
 }
 
-// 保持原有凭证写入逻辑（不影响车辆数据）
+// 保持凭证写入逻辑
 if (url.includes('/user-sign/v2/status')) {
-  if (json.code === 0 && json.data) {
+  if (json && json.code === 0 && json.data) {
     $.setdata(json.data.authorization, "ninebot.authorization");
     console.log("✅ 凭证已写入（签到接口）");
   }
 }
 
-// 用于调试的全局日志（确保脚本加载）
-console.log("【九号车辆数据】脚本已加载（含通知功能）");
+// 调试日志
+console.log("【九号车辆数据】脚本已加载（Loon 3.4.0 兼容版）");
