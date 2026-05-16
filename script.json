@@ -1,0 +1,47 @@
+{
+  "color" : "rgba(0, 198, 165,1)",
+  "iconImage" : "",
+  "version" : "1.0.0",
+  "name" : "九号签到静态效果",
+  "localizedNames" : {
+    "de" : "",
+    "fr" : "",
+    "pt" : "",
+    "ru" : "",
+    "zh" : "",
+    "ja" : "",
+    "en" : "",
+    "es" : "",
+    "it" : ""
+  },
+  "remoteResource" : {
+    "url" : "https:\/\/github.com\/QinyRui\/QYR-\/blob\/Q\/%25E4%25B9%259D%25E5%258F%25B7%25E7%25AD%25BE%25E5%2588%25B0%25E6%25B5%258B%25E8%25AF%2595.zip",
+    "hash" : "E8EFB3AE-6ABB-4F5B-8140-A20B0CCB8711",
+    "autoUpdateInterval" : 300
+  },
+  "localizedDescriptions" : {
+    "fr" : "",
+    "en" : "",
+    "es" : "",
+    "it" : "",
+    "de" : "",
+    "ja" : "",
+    "ru" : "",
+    "pt" : "",
+    "zh" : ""
+  },
+  "icon" : "square.2.layers.3d.fill",
+  "runInApp" : false,
+  "intentInputTypes" : [
+
+  ],
+  "description" : "",
+  "author" : {
+    "name" : "QinyRui",
+    "email" : "602839678@qq.com",
+    "homepage" : "https:\/\/github.com\/QinyRui\/QYR-"
+  },
+  "contributors" : [
+
+  ]
+}
