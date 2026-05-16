@@ -1,0 +1,48 @@
+{
+  "entry" : "index.tsx",
+  "localizedNames" : {
+    "ru" : "",
+    "it" : "",
+    "fr" : "",
+    "ja" : "",
+    "en" : "",
+    "pt" : "",
+    "zh" : "",
+    "es" : "",
+    "de" : ""
+  },
+  "contributors" : [
+
+  ],
+  "icon" : "scooter",
+  "description" : "",
+  "remoteResource" : {
+    "url" : "https:\/\/github.com\/QinyRui\/QYR-\/blob\/Q\/%25E4%25B9%259D%25E5%258F%25B7%25E7%25AD%25BE%25E5%2588%25B0%25E6%25B5%258B%25E8%25AF%2595.zip",
+    "autoUpdateInterval" : 300,
+    "hash" : "E8EFB3AE-6ABB-4F5B-8140-A20B0CCB8711"
+  },
+  "runInApp" : false,
+  "iconImage" : "",
+  "name" : "九号签到（多功能）",
+  "version" : "1.0.0",
+  "color" : "rgba(102, 196, 235,1)",
+  "author" : {
+    "email" : "602839678@qq.com",
+    "homepage" : "https:\/\/github.com\/QinyRui\/QYR-",
+    "name" : "QinyRui"
+  },
+  "localizedDescriptions" : {
+    "it" : "",
+    "pt" : "",
+    "ja" : "",
+    "de" : "",
+    "zh" : "",
+    "en" : "",
+    "fr" : "",
+    "ru" : "",
+    "es" : ""
+  },
+  "intentInputTypes" : [
+
+  ]
+}
