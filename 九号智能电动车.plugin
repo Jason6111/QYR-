@@ -6,7 +6,7 @@
 #!tag = 九号智能电动车
 #!system = iOS,iPadOS,macOS
 #!date = 2026-05-17
-#!version = 2.9.0 + 车辆数据最终修复版（全远程版）
+#!version = 2.9.0 + Portal车辆接口最终修复版（全远程）
 #!system_version = 15
 [Argument]
 capture = switch, "false", "true", tag=自动抓包开关, desc=开启后访问九号签到接口自动写入鉴权信息到BoxJs
@@ -19,9 +19,10 @@ refreshInterval = input, "1440", tag=小组件刷新间隔（分钟）, desc=小
 [Script]
 # 抓包写入鉴权信息（全远程脚本）
 http-response ^https:\/\/cn-cbu-gateway\.ninebot\.com\/portal\/api\/user-sign\/v2\/(status|sign|blind-box/receive) script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot_Sign_Single_v2.9.js, timeout=10, tag=九号-抓包写入, enable={capture}, script-update-interval=0, requires-body=true
-# 车辆实时数据抓取（全远程脚本）
-http-response ^https:\/\/api-ninebot\.9fevs\.com\/api\/vehicle\/v1\/device\/realTimeData script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot_Sign_Single_v2.9.js, requires-body=true, tag=九号-车辆数据, enable=true, script-update-interval=0
-http-response ^https:\/\/api-jhcx-v6-bj\.ninebot\.com\/vehicle\/v1\/device\/status script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot_Sign_Single_v2.9.js, requires-body=true, tag=九号-车辆兼容, enable=true, script-update-interval=0
+# Portal 官方车辆状态接口
+http-response ^https:\/\/cn-cbu-gateway\.ninebot\.com\/portal\/api\/vehicle\/v1\/device\/status script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot_Sign_Single_v2.9.js, requires-body=true, tag=九号-车辆数据, enable=true, script-update-interval=0
+# Portal 官方车辆实时数据接口
+http-response ^https:\/\/cn-cbu-gateway\.ninebot\.com\/portal\/api\/vehicle\/v1\/device\/realtime script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot_Sign_Single_v2.9.js, requires-body=true, tag=九号-车辆实时, enable=true, script-update-interval=0
 # 定时自动签到任务（全远程脚本）
 cron {cron_time} script-path=https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot_Sign_Single_v2.9.js, timeout=120, tag=九号-自动签到, enable=true, script-update-interval=0
 # BoxJs 跨域兼容（保持原远程）
