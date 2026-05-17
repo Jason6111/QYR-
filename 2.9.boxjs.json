@@ -5,7 +5,7 @@
   "description": "九号智能电动车账号凭证采集与管理，供自动签到脚本复用",
   "icon": "https://raw.githubusercontent.com/QinyRui/QYR-/Q/IMG_1706.png",
   "repo": "https://t.me/JiuHaoAPP",
-  "updateUrl": "https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot.boxjs.json",
+  "updateUrl": "https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/2.9.boxjs.json",
   "apps": [
     {
       "id": "DataCollection.Ninebot",
