@@ -1,6 +1,6 @@
 {
   "id": "ByteValley.DataCollection",
-  "name": "九号·智能",
+  "name": "九号·数据",
   "author": "@QinyRui",
   "description": "九号智能电动车账号凭证采集与管理，供自动签到脚本复用",
   "icon": "https://raw.githubusercontent.com/QinyRui/QYR-/Q/IMG_1706.png",
@@ -9,7 +9,7 @@
   "apps": [
     {
       "id": "DataCollection.Ninebot",
-      "name": "九号智能电动车",
+      "name": "九号小组件",
       "descs_html": [
         "用于保存九号智能电动车 App 抓取到的 <code>Authorization</code>、<code>DeviceId</code> 等核心凭证，支持自动签到、盲盒开箱等功能。",
         "<b>凭证获取方式：</b><br/>1）确保客户端已配置九号自动抓包脚本并开启开关；<br/>2）打开<b>九号智能电动车官方 App</b>，进入「签到」页面触发接口；<br/>3）脚本会自动将凭证写入以下字段，无需手动填写。",
@@ -31,7 +31,15 @@
         "ninebot.logLevel",
         "ninebot.lastCaptureAt",
         "ninebot.captureEnable",
-        "ninebot.autoRepair"
+        "ninebot.autoRepair",
+        "ninebot.vehicleSn",
+        "ninebot.batterySoc",
+        "ninebot.mileage",
+        "ninebot.totalMileage",
+        "ninebot.lockStatus",
+        "ninebot.batteryTemp",
+        "ninebot.speed",
+        "ninebot.vehicleLastUpdate"
       ],
       "settings": [
         {
@@ -138,15 +146,82 @@
           "type": "text",
           "isReadonly": true,
           "desc": "凭证最后更新的时间戳，仅展示不可修改，自动同步"
+        },
+        {
+          "id": "ninebot.vehicleSn",
+          "name": "车辆SN码",
+          "val": "",
+          "type": "text",
+          "isSecret": true,
+          "isReadonly": true,
+          "desc": "自动抓取的车辆唯一编号"
+        },
+        {
+          "id": "ninebot.batterySoc",
+          "name": "剩余电量 %",
+          "val": "",
+          "type": "text",
+          "isReadonly": true,
+          "desc": "车辆实时电量：100=满电"
+        },
+        {
+          "id": "ninebot.mileage",
+          "name": "剩余续航 km",
+          "val": "",
+          "type": "text",
+          "isReadonly": true,
+          "desc": "当前电量可行驶里程"
+        },
+        {
+          "id": "ninebot.totalMileage",
+          "name": "总里程 km",
+          "val": "",
+          "type": "text",
+          "isReadonly": true,
+          "desc": "车辆累计总行驶里程"
+        },
+        {
+          "id": "ninebot.lockStatus",
+          "name": "车辆设防状态",
+          "val": "",
+          "type": "text",
+          "isReadonly": true,
+          "desc": "1=已设防 0=未设防"
+        },
+        {
+          "id": "ninebot.batteryTemp",
+          "name": "电池温度 °C",
+          "val": "",
+          "type": "text",
+          "isReadonly": true,
+          "desc": "电池实时温度"
+        },
+        {
+          "id": "ninebot.speed",
+          "name": "当前速度 km/h",
+          "val": "",
+          "type": "text",
+          "isReadonly": true,
+          "desc": "车辆实时速度"
+        },
+        {
+          "id": "ninebot.vehicleLastUpdate",
+          "name": "车辆数据最后更新",
+          "val": "",
+          "type": "text",
+          "isReadonly": true,
+          "desc": "车辆状态同步时间"
         }
       ]
     }
   ],
-  "rewrite": {
-    "name": "九号电动车配置跨域重写",
-    "author": "@QinyRui",
-    "script": "const res={headers:{...$response.headers,\"Access-Control-Allow-Origin\":\"*\",\"Access-Control-Allow-Methods\":\"GET,OPTIONS\"},body:$response.body};$done(res);",
-    "match": "https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot.boxjs.json",
-    "type": "response"
-  }
+  "rewrite": [
+    {
+      "name": "九号电动车配置跨域重写",
+      "author": "@QinyRui",
+      "script": "const res={headers:{...$response.headers,\"Access-Control-Allow-Origin\":\"*\",\"Access-Control-Allow-Methods\":\"GET,OPTIONS\"},body:$response.body};$done(res);",
+      "match": "https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot.boxjs.json",
+      "type": "response"
+    }
+  ]
 }
