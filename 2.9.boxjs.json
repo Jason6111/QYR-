@@ -5,7 +5,7 @@
   "description": "九号智能电动车账号凭证采集与管理，供自动签到脚本复用",
   "icon": "https://raw.githubusercontent.com/QinyRui/QYR-/Q/IMG_1706.png",
   "repo": "https://t.me/JiuHaoAPP",
-  "updateUrl": "https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/2.9.boxjs.json",
+  "updateUrl": "https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot.boxjs.json",
   "apps": [
     {
       "id": "DataCollection.Ninebot",
@@ -221,6 +221,20 @@
       "author": "@QinyRui",
       "script": "const res={headers:{...$response.headers,\"Access-Control-Allow-Origin\":\"*\",\"Access-Control-Allow-Methods\":\"GET,OPTIONS\"},body:$response.body};$done(res);",
       "match": "https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot.boxjs.json",
+      "type": "response"
+    },
+    {
+      "name": "九号车辆数据自动抓取写入BoxJS",
+      "author": "ByteValley",
+      "script": "const body = $response.body; if (!body) $done({}); try { const json = JSON.parse(body); if (json.data && $persistentStore) { const d = json.data; $persistentStore.write(d.sn || '', 'ninebot.vehicleSn'); $persistentStore.write(d.batterySoc + '' || '', 'ninebot.batterySoc'); $persistentStore.write(d.mileage + '' || '', 'ninebot.mileage'); $persistentStore.write(d.totalMileage + '' || '', 'ninebot.totalMileage'); $persistentStore.write(d.lockStatus + '' || '', 'ninebot.lockStatus'); $persistentStore.write(d.batteryTemp + '' || '', 'ninebot.batteryTemp'); $persistentStore.write(d.speed + '' || '', 'ninebot.speed'); $persistentStore.write(new Date().toLocaleString(), 'ninebot.vehicleLastUpdate'); } } catch (e) {} $done({});",
+      "match": "^https://api-ninebot\\.9fevs\\.com/api/vehicle/v1/device/realTimeData",
+      "type": "response"
+    },
+    {
+      "name": "九号车辆状态接口兼容抓取",
+      "author": "ByteValley",
+      "script": "const body = $response.body; if (!body) $done({}); try { const json = JSON.parse(body); const d = json.data || json; if (d && $persistentStore) { $persistentStore.write(d.sn || d.vehicleSn || '', 'ninebot.vehicleSn'); $persistentStore.write(d.batterySoc + '' || '', 'ninebot.batterySoc'); $persistentStore.write(d.mileage + '' || '', 'ninebot.mileage'); $persistentStore.write(d.totalMileage + '' || '', 'ninebot.totalMileage'); $persistentStore.write(d.lockStatus + '' || '', 'ninebot.lockStatus'); $persistentStore.write(d.batteryTemp + '' || '', 'ninebot.batteryTemp'); $persistentStore.write(d.speed + '' || '', 'ninebot.speed'); $persistentStore.write(new Date().toLocaleString(), 'ninebot.vehicleLastUpdate'); } } catch (e) {} $done({});",
+      "match": "^https://.*ninebot\\.com.*/(vehicle|device)/(status|realTimeData)",
       "type": "response"
     }
   ]
