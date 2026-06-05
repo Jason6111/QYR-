@@ -1,83 +1,72 @@
-// 九号电动车脚本更新检测脚本（Loon 专用）
-// 检测目标：Ninebot_Sign_Single_v2.7.js
-const SCRIPT_NAME = "Ninebot_Sign_Single_v2.7.js"
-const REMOTE_SCRIPT_URL = "https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot_Sign_Single_v2.7.js"
-const UPDATE_NOTICE_TITLE = "九号签到脚本更新提醒"
+// 九号电动车签到脚本更新检测｜Loon专用
+// 匹配脚本：Ninebot_Sign_Single_v2.9.js
+const SCRIPT_NAME = "Ninebot_Sign_Single_v2.9.js"
+const REMOTE_SCRIPT_URL = "https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot_Sign_Single_v2.9.js"
+const UPDATE_NOTICE_TITLE = "【九号签到脚本】版本更新提醒"
 
-// 版本号提取正则（匹配脚本内的 version 注释，例如：// version: 2.7.1）
-const VERSION_REG = /\/\/\s*version:\s*([\d\.]+)/i
+// 正则匹配 // version: x.x.x
+const VERSION_REG = /\/\/\s*version[:：]\s*([\d\.]+)/i
 
-// 主函数
 async function checkUpdate() {
     try {
-        // 1. 获取远程脚本内容和更新时间
-        const remoteResp = await fetch(REMOTE_SCRIPT_URL, {
-            method: "GET",
+        // 拉取远端源码
+        const remote = await $httpClient.get({
+            url: REMOTE_SCRIPT_URL,
             headers: {
-                "User-Agent": "Loon/2.1.0"
+                "User-Agent": "Mozilla/5.0 Loon Script CheckUpdate"
             }
         })
-
-        if (!remoteResp.ok) {
-            console.log(`[更新检测] 远程脚本请求失败，状态码：${remoteResp.status}`)
+        if (remote.status !== 200) {
+            console.log(`[更新检测] 远端拉取失败 code:${remote.status}`)
             $done()
             return
         }
+        const remoteBody = remote.body
+        const remoteVer = remoteBody.match(VERSION_REG)?.[1] ?? "0.0.0"
+        const modifyTime = remote.headers["Last-Modified"] ?? "无"
 
-        const remoteContent = await remoteResp.text()
-        const remoteLastModified = remoteResp.headers.get("Last-Modified") || "未知时间"
-        const remoteVersion = remoteContent.match(VERSION_REG)?.[1] || "未知版本"
-
-        // 2. 获取本地脚本内容（Loon 本地缓存）
-        let localVersion = "未安装"
+        // 读取本地脚本
+        let localVer = "0.0.0"
         try {
-            const localContent = await $httpClient.get(`script://${SCRIPT_NAME}`)
-            if (localContent?.body) {
-                localVersion = localContent.body.match(VERSION_REG)?.[1] || "本地版本未知"
-            }
-        } catch (e) {
-            console.log(`[更新检测] 本地脚本未找到：${e.message}`)
+            const local = await $httpClient.get(`script://${SCRIPT_NAME}`)
+            localVer = local.body.match(VERSION_REG)?.[1] ?? "0.0.0"
+        } catch {
+            console.log("[更新检测] 本地脚本不存在")
+            localVer = "0.0.0"
         }
 
-        // 3. 版本对比（简易语义化版本对比）
-        const isUpdateAvailable = compareVersion(remoteVersion, localVersion) > 0
-
-        // 4. 推送通知
-        let message = ""
-        if (isUpdateAvailable) {
-            message = `发现新版本！\n本地版本：${localVersion}\n远程版本：${remoteVersion}\n更新时间：${remoteLastModified}\n\n请前往 Loon 插件设置刷新脚本`
-            console.log(`[更新检测] ${message}`)
-            $notification.post(UPDATE_NOTICE_TITLE, "", message)
+        const res = compareVer(remoteVer, localVer)
+        let msg = ""
+        if (res > 0) {
+            msg = `✅发现新版本
+本地：${localVer}
+远端：${remoteVer}
+更新时间：${modifyTime}
+打开脚本链接替换即可`
+            $notification.post(UPDATE_NOTICE_TITLE, "有新版本可用", msg)
         } else {
-            message = `当前脚本已是最新版本\n本地版本：${localVersion}\n远程版本：${remoteVersion}\n最后更新：${remoteLastModified}`
-            console.log(`[更新检测] ${message}`)
+            msg = `已是最新版
+本地:${localVer}｜远程:${remoteVer}`
         }
-
-        $done()
-    } catch (error) {
-        console.log(`[更新检测] 异常：${error.message}`)
-        $done()
+        console.log(msg)
+    } catch (e) {
+        console.log(`[更新检测异常]${e.message}`)
     }
+    $done()
 }
 
-// 语义化版本对比工具函数
-// 返回 1: remote > local; 0: 相等; -1: remote < local
-function compareVersion(remoteVer, localVer) {
-    if (remoteVer === "未知版本" || localVer === "未安装") return 1
-    if (localVer === "本地版本未知") return -1
-
-    const remoteParts = remoteVer.split(".").map(Number)
-    const localParts = localVer.split(".").map(Number)
-    const maxLen = Math.max(remoteParts.length, localParts.length)
-
-    for (let i = 0; i < maxLen; i++) {
-        const r = remoteParts[i] || 0
-        const l = localParts[i] || 0
-        if (r > l) return 1
-        if (r < l) return -1
+// 版本比较:1=需更新 /0=一致 /-1=本地更高
+function compareVer(r, l) {
+    const arrR = r.split(".").map(Number)
+    const arrL = l.split(".").map(Number)
+    const len = Math.max(arrR.length, arrL.length)
+    for (let i = 0; i < len; i++) {
+        const rv = arrR[i] || 0
+        const lv = arrL[i] || 0
+        if (rv > lv) return 1
+        if (rv < lv) return -1
     }
     return 0
 }
 
-// 执行检测
 checkUpdate()
