@@ -5,8 +5,8 @@
 #!homepage = https://t.me/JiuHaoAPP
 #!tag = 九号智能电动车
 #!system = iOS,iPadOS,macOS
-#!date = 2026-05-17
-#!version = 2.9.0 + Portal车辆接口最终修复版（全远程）
+#!date = 2026-06-08
+#!version = 2.9.1 + Portal车辆接口最终修复版（全远程）
 #!system_version = 15
 [Argument]
 capture = switch, "false", "true", tag=自动抓包开关, desc=开启后访问九号签到接口自动写入鉴权信息到BoxJs
