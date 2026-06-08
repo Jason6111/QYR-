@@ -1,5 +1,5 @@
 #!name = 九号智能电动车 · 单号自动签到（自动抓包版）
-#!desc = 抓包自动写入教程→无需手动开抓包开关，直接打开九号APP签到页，凭证将自动写入ComponentService
+#!desc = 抓包自动写入教程→打开抓包开关，直接打开九号APP签到页，凭证将自动写入boxjs保存即可
 #!openUrl = https://t.me/JiuHaoAPP
 #!author = QinyRui
 #!homepage = https://t.me/JiuHaoAPP
