@@ -5,7 +5,7 @@
   "description": "九号智能电动车账号凭证采集与管理，供自动签到脚本复用",
   "icon": "https://raw.githubusercontent.com/QinyRui/QYR-/Q/IMG_1706.png",
   "repo": "https://t.me/JiuHaoAPP",
-  "updateUrl": "https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot.boxjs.json",
+  "updateUrl": "https://raw.githubusercontent.com/Jason6111/QYR-/jiuhao/Ninebot.boxjs.json",
   "apps": [
     {
       "id": "DataCollection.Ninebot",
@@ -220,7 +220,7 @@
       "name": "九号电动车配置跨域重写",
       "author": "@QinyRui",
       "script": "const res={headers:{...$response.headers,\"Access-Control-Allow-Origin\":\"*\",\"Access-Control-Allow-Methods\":\"GET,OPTIONS\"},body:$response.body};$done(res);",
-      "match": "https://raw.githubusercontent.com/QinyRui/QYR-/jiuhao/Ninebot.boxjs.json",
+      "match": "https://raw.githubusercontent.com/Jason6111/QYR-/jiuhao/Ninebot.boxjs.json",
       "type": "response"
     },
     {
